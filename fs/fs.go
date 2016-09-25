@@ -18,7 +18,8 @@ import (
 type ploufs struct {
 	// TODO - this should need default fill in.
 	pathfs.FileSystem
-	Root string
+	Root  string
+	Cache Cache
 }
 
 // A FUSE filesystem that shunts all request to an underlying file
@@ -124,7 +125,7 @@ func (fs *ploufs) Open(name string, flags uint32, context *fuse.Context) (fuseFi
 	if err != nil {
 		return nil, fuse.ToStatus(err)
 	}
-	return nodefs.NewLoopbackFile(f), fuse.OK
+	return NewFile(f), fuse.OK
 }
 
 func (fs *ploufs) Chmod(path string, mode uint32, context *fuse.Context) (code fuse.Status) {
@@ -181,7 +182,7 @@ func (fs *ploufs) Access(name string, mode uint32, context *fuse.Context) (code 
 
 func (fs *ploufs) Create(path string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
 	f, err := os.OpenFile(fs.GetPath(path), int(flags)|os.O_CREATE, os.FileMode(mode))
-	return nodefs.NewLoopbackFile(f), fuse.ToStatus(err)
+	return NewFile(f), fuse.ToStatus(err)
 }
 
 func Mount(orig string, mountpoint string) {
