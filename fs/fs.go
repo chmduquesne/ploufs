@@ -24,7 +24,7 @@ type ploufs struct {
 // A FUSE filesystem that shunts all request to an underlying file
 // system.  Its main purpose is to provide test coverage without
 // having to build a synthetic filesystem.
-func New(root string) pathfs.FileSystem {
+func NewFS(root string) pathfs.FileSystem {
 	// Make sure the Root path is absolute to avoid problems when the
 	// application changes working directory.
 	root, err := filepath.Abs(root)
@@ -185,7 +185,7 @@ func (fs *ploufs) Create(path string, flags uint32, mode uint32, context *fuse.C
 }
 
 func Mount(orig string, mountpoint string) {
-	loopbackfs := New(orig)
+	loopbackfs := NewFS(orig)
 	pathFsOpts := &pathfs.PathNodeFsOptions{ClientInodes: false}
 	pathFs := pathfs.NewPathNodeFs(loopbackfs, pathFsOpts)
 	conn := nodefs.NewFileSystemConnector(pathFs.Root(), nil)
