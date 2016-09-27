@@ -7,3 +7,6 @@ before_install:
   - sudo /bin/sh -c 'echo user_allow_other > /etc/fuse.conf'
   - sudo chmod 666 /dev/fuse
   - sudo chown root:$USER /etc/fuse.conf
+  - sudo apt-get install -qq build-essential
+  - git clone https://github.com/rfjakob/fuse-xfstests /tmp/fuse-xfstests
+  - cd /tmp/fuse-xfstests && make
