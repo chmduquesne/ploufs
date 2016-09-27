@@ -9,7 +9,7 @@ before_install:
   - sudo chown root:$USER /etc/fuse.conf
   - sudo apt-get install -qq build-essential uuid-dev xfslibs-dev libattr1-dev libacl1-dev libdm0-dev
   - git clone https://github.com/rfjakob/fuse-xfstests /tmp/fuse-xfstests
-  - cd /tmp/fuse-xfstests && make
+  - cd /tmp/fuse-xfstests && make && cd -
 script:
   - go get -t -v ./...
   - go test -v ./...
