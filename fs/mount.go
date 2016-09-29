@@ -5,6 +5,10 @@ package fs
 import (
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -13,13 +17,40 @@ import (
 
 func Mount(orig string, mountpoint string) {
 	fs := NewFS(orig)
-	pathFsOpts := &pathfs.PathNodeFsOptions{ClientInodes: false}
-	pathFs := pathfs.NewPathNodeFs(fs, pathFsOpts)
-	conn := nodefs.NewFileSystemConnector(pathFs.Root(), nil)
-	state, err := fuse.NewServer(conn.RawFS(), mountpoint, nil)
+	envVarExists := func(key string) bool { return os.Getenv(key) != "" }
+	absolutePath := func(name string) string {
+		res, _ := filepath.Abs(name)
+		return res
+	}
+	envVarAsTokens := func(key string) []string {
+		s := os.Getenv(key)
+		if s == "" {
+			return nil
+		}
+		return strings.Split(s, ",")
+	}
+	pathNodeFsOpts := &pathfs.PathNodeFsOptions{
+		ClientInodes: envVarExists("ENABLE_LINKS"),
+	}
+	pathFs := pathfs.NewPathNodeFs(fs, pathNodeFsOpts)
+	mountOpts := &fuse.MountOptions{
+		Options:        envVarAsTokens("MOUNT_OPTIONS"),
+		Name:           path.Base(os.Args[0]),
+		FsName:         absolutePath(orig),
+		Debug:          envVarExists("DEBUG"),
+		SingleThreaded: envVarExists("SINGLE_THREADED"),
+	}
+	nodefsOpts := &nodefs.Options{
+		NegativeTimeout: time.Second,
+		AttrTimeout:     time.Second,
+		EntryTimeout:    time.Second,
+	}
+	conn := nodefs.NewFileSystemConnector(pathFs.Root(), nodefsOpts)
+	state, err := fuse.NewServer(conn.RawFS(), mountpoint, mountOpts)
 	if err != nil {
 		fmt.Printf("Mount fail: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Println("Mounted!")
 	state.Serve()
 }
