@@ -10,7 +10,7 @@ type input struct {
 	data   string
 }
 
-func TestCacheWrites(t *testing.T) {
+func TestMultipleWrites(t *testing.T) {
 	tests := []struct {
 		writes []input
 		expect []string
@@ -61,7 +61,7 @@ func TestCacheWrites(t *testing.T) {
 	}
 
 	for n, test := range tests {
-		c := &CacheFile{
+		c := &BufferFile{
 			stat:    nil,
 			deleted: false,
 			slices:  nil,

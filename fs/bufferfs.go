@@ -2,6 +2,6 @@
 
 package fs
 
-type Cache struct {
-	files map[string]CacheFile
+type BufferFS struct {
+	files map[string]BufferFile
 }

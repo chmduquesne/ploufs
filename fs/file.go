@@ -25,8 +25,6 @@ func NewFile(f *os.File) nodefs.File {
 type plouFile struct {
 	nodefs.File
 
-	Cache CacheFile
-
 	OSFile *os.File
 	// os.File is not threadsafe. Although fd themselves are
 	// constant during the lifetime of an open file, the OS may

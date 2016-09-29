@@ -8,21 +8,21 @@ import (
 	"syscall"
 )
 
-type CacheFile struct {
+type BufferFile struct {
 	stat    *syscall.Statfs_t
 	deleted bool
 	slices  []*FileSlice
 }
 
-func (c *CacheFile) String() string {
+func (c *BufferFile) String() string {
 	s := make([]string, 0)
 	for _, slice := range c.slices {
 		s = append(s, slice.String())
 	}
-	return fmt.Sprintf("CacheFile{%v}", strings.Join(s, ", "))
+	return fmt.Sprintf("BufferFile{%v}", strings.Join(s, ", "))
 }
 
-func (c *CacheFile) Write(data []byte, off int64) {
+func (c *BufferFile) Write(data []byte, off int64) {
 	toInsert := &FileSlice{
 		data:   data,
 		offset: off,

@@ -17,8 +17,7 @@ import (
 type plouFS struct {
 	// TODO - this should need default fill in.
 	pathfs.FileSystem
-	Root  string
-	Cache Cache
+	Root string
 }
 
 func NewFS(root string) pathfs.FileSystem {
