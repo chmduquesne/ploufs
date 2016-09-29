@@ -21,9 +21,6 @@ type plouFS struct {
 	Cache Cache
 }
 
-// A FUSE filesystem that shunts all request to an underlying file
-// system.  Its main purpose is to provide test coverage without
-// having to build a synthetic filesystem.
 func NewFS(root string) pathfs.FileSystem {
 	// Make sure the Root path is absolute to avoid problems when the
 	// application changes working directory.
@@ -48,10 +45,7 @@ func (fs *plouFS) StatFs(name string) *fuse.StatfsOut {
 	return nil
 }
 
-func (fs *plouFS) OnMount(nodeFs *pathfs.PathNodeFs) {
-	//mntpoint, _ := filepath.Abs(".")
-	//fmt.Printf("fusermount -u %s\n", mntpoint)
-}
+func (fs *plouFS) OnMount(nodeFs *pathfs.PathNodeFs) {}
 
 func (fs *plouFS) OnUnmount() {}
 

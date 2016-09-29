@@ -78,30 +78,3 @@ func (s *FileSlice) Merge(other *FileSlice) *FileSlice {
 	}
 	return res
 }
-
-func (c *CacheFile) Write(data []byte, off int64) {
-	toInsert := &FileSlice{
-		data:   data,
-		offset: off,
-	}
-	// Create the slice that merges all mergeable slices
-	for _, s := range c.slices {
-		if s.Overlaps(toInsert) {
-			toInsert = s.Merge(toInsert)
-		}
-	}
-
-	// Keep the slice sorted by offset and non overlapping
-	slices := make([]*FileSlice, 0)
-	inserted := false
-	for _, s := range c.slices {
-		if !s.Overlaps(toInsert) {
-			if s.offset > toInsert.offset && !inserted {
-				slices = append(slices, toInsert)
-				inserted = true
-			}
-			slices = append(slices, s)
-		}
-	}
-	c.slices = slices
-}
