@@ -16,7 +16,8 @@ import (
 )
 
 func Mount(orig string, mountpoint string) {
-	fs := NewFS(orig)
+	bindfs := NewBindFS(orig)
+	bufferfs := NewBufferFS(bindfs)
 	envVarExists := func(key string) bool { return os.Getenv(key) != "" }
 	absolutePath := func(name string) string {
 		res, _ := filepath.Abs(name)
@@ -32,7 +33,8 @@ func Mount(orig string, mountpoint string) {
 	pathNodeFsOpts := &pathfs.PathNodeFsOptions{
 		ClientInodes: envVarExists("ENABLE_LINKS"),
 	}
-	pathFs := pathfs.NewPathNodeFs(fs, pathNodeFsOpts)
+	//pathFs := pathfs.NewPathNodeFs(bindfs, pathNodeFsOpts)
+	pathFs := pathfs.NewPathNodeFs(bufferfs, pathNodeFsOpts)
 	mountOpts := &fuse.MountOptions{
 		Options:        envVarAsTokens("MOUNT_OPTIONS"),
 		Name:           path.Base(os.Args[0]),

@@ -62,9 +62,7 @@ func TestMultipleWrites(t *testing.T) {
 
 	for n, test := range tests {
 		c := &BufferFile{
-			stat:    nil,
-			deleted: false,
-			slices:  nil,
+			slices: nil,
 		}
 		for _, w := range test.writes {
 			c.Write([]byte(w.data), w.offset)
