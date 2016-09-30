@@ -57,7 +57,7 @@ func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.D
 }
 
 func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
-	fusefile, status := fs.Open(name, flags, context)
+	fusefile, status := fs.FileSystem.Open(name, flags, context)
 	if status != fuse.OK {
 		return nil, status
 	}

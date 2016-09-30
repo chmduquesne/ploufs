@@ -3,9 +3,6 @@
 package fs
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 )
@@ -23,15 +20,16 @@ func NewBufferFile(wrapped nodefs.File) *BufferFile {
 	return b
 }
 
-func (f *BufferFile) String() string {
-	s := make([]string, 0)
-	for _, slice := range f.slices {
-		s = append(s, slice.String())
-	}
-	return fmt.Sprintf("BufferFile{%v}", strings.Join(s, ", "))
-}
+//func (f *BufferFile) String() string {
+//	s := make([]string, 0)
+//	for _, slice := range f.slices {
+//		s = append(s, slice.String())
+//	}
+//	return fmt.Sprintf("BufferFile{%v}", strings.Join(s, ", "))
+//}
 
 func (f *BufferFile) Write(data []byte, off int64) (uint32, fuse.Status) {
+	log.Fmt("foo")
 	toInsert := &FileSlice{
 		data:   data,
 		offset: off,
