@@ -29,7 +29,6 @@ func NewBufferFile(wrapped nodefs.File) *BufferFile {
 //}
 
 func (f *BufferFile) Write(data []byte, off int64) (uint32, fuse.Status) {
-	log.Fmt("foo")
 	toInsert := &FileSlice{
 		data:   data,
 		offset: off,
