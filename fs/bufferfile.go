@@ -105,10 +105,10 @@ func (f *BufferFile) Fsync(flags int) (code fuse.Status) {
 	return fuse.OK
 }
 
-func (f *BindFile) Allocate(off uint64, sz uint64, mode uint32) fuse.Status {
+func (f *BufferFile) Allocate(off uint64, sz uint64, mode uint32) fuse.Status {
 	return fuse.OK
 }
 
-func (f *BindFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
+func (f *BufferFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
 	return fuse.OK
 }
