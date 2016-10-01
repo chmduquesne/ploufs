@@ -28,7 +28,11 @@ type BufferFS struct {
 
 func NewBufferFS(wrapped pathfs.FileSystem) pathfs.FileSystem {
 	return &BufferFS{
-		FileSystem: wrapped,
+		FileSystem:     wrapped,
+		bufferedWrites: make(map[string]*BufferFile),
+		bufferedStats:  make(map[string]*fuse.StatfsOut),
+		bufferedAttr:   make(map[string]*attrResponse),
+		bufferedDir:    make(map[string]*dirResponse),
 	}
 }
 
@@ -57,9 +61,14 @@ func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.D
 }
 
 func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
-	fusefile, status := fs.FileSystem.Open(name, flags, context)
-	if status != fuse.OK {
-		return nil, status
+	res := fs.bufferedWrites[name]
+	if res == nil {
+		wrappedfile, status := fs.FileSystem.Open(name, flags, context)
+		if status != fuse.OK {
+			return nil, status
+		}
+		res = NewBufferFile(wrappedfile)
+		fs.bufferedWrites[name] = res
 	}
-	return NewBufferFile(fusefile), status
+	return res, fuse.OK
 }

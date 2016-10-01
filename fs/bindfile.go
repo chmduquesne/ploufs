@@ -35,15 +35,14 @@ type BindFile struct {
 	lock sync.Mutex
 }
 
-func (f *BindFile) InnerFile() nodefs.File {
-	return nil
-}
-
-func (f *BindFile) SetInode(n *nodefs.Inode) {
-}
+func (f *BindFile) SetInode(n *nodefs.Inode) {}
 
 func (f *BindFile) String() string {
 	return fmt.Sprintf("BindFile(%s)", f.OSFile.Name())
+}
+
+func (f *BindFile) InnerFile() nodefs.File {
+	return nil
 }
 
 func (f *BindFile) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Status) {
@@ -94,43 +93,6 @@ func (f *BindFile) Fsync(flags int) (code fuse.Status) {
 	return r
 }
 
-func (f *BindFile) Truncate(size uint64) fuse.Status {
-	f.lock.Lock()
-	r := fuse.ToStatus(syscall.Ftruncate(int(f.OSFile.Fd()), int64(size)))
-	f.lock.Unlock()
-
-	return r
-}
-
-func (f *BindFile) Chmod(mode uint32) fuse.Status {
-	f.lock.Lock()
-	r := fuse.ToStatus(f.OSFile.Chmod(os.FileMode(mode)))
-	f.lock.Unlock()
-
-	return r
-}
-
-func (f *BindFile) Chown(uid uint32, gid uint32) fuse.Status {
-	f.lock.Lock()
-	r := fuse.ToStatus(f.OSFile.Chown(int(uid), int(gid)))
-	f.lock.Unlock()
-
-	return r
-}
-
-func (f *BindFile) GetAttr(a *fuse.Attr) fuse.Status {
-	st := syscall.Stat_t{}
-	f.lock.Lock()
-	err := syscall.Fstat(int(f.OSFile.Fd()), &st)
-	f.lock.Unlock()
-	if err != nil {
-		return fuse.ToStatus(err)
-	}
-	a.FromStat(&st)
-
-	return fuse.OK
-}
-
 func (f *BindFile) Allocate(off uint64, sz uint64, mode uint32) fuse.Status {
 	f.lock.Lock()
 	err := syscall.Fallocate(int(f.OSFile.Fd()), mode, int64(off), int64(sz))
@@ -141,11 +103,18 @@ func (f *BindFile) Allocate(off uint64, sz uint64, mode uint32) fuse.Status {
 	return fuse.OK
 }
 
-const _UTIME_NOW = ((1 << 30) - 1)
-const _UTIME_OMIT = ((1 << 30) - 2)
-
 // Utimens - file handle based version of loopbackFileSystem.Utimens()
 func (f *BindFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
+	futimens := func(fd int, times *[2]syscall.Timespec) (err error) {
+		_, _, e1 := syscall.Syscall6(
+			syscall.SYS_UTIMENSAT, uintptr(fd), 0,
+			uintptr(unsafe.Pointer(times)), uintptr(0), 0, 0)
+		if e1 != 0 {
+			err = syscall.Errno(e1)
+		}
+		return
+	}
+	_UTIME_OMIT := int64(((1 << 30) - 2))
 	var ts [2]syscall.Timespec
 
 	if a == nil {
@@ -166,12 +135,4 @@ func (f *BindFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
 	err := futimens(int(f.OSFile.Fd()), &ts)
 	f.lock.Unlock()
 	return fuse.ToStatus(err)
-}
-
-func futimens(fd int, times *[2]syscall.Timespec) (err error) {
-	_, _, e1 := syscall.Syscall6(syscall.SYS_UTIMENSAT, uintptr(fd), 0, uintptr(unsafe.Pointer(times)), uintptr(0), 0, 0)
-	if e1 != 0 {
-		err = syscall.Errno(e1)
-	}
-	return
 }
