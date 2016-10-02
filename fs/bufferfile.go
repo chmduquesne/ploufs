@@ -97,6 +97,7 @@ func (f *BufferFile) Write(data []byte, off int64) (uint32, fuse.Status) {
 func (f *BufferFile) Release() {}
 
 func (f *BufferFile) Flush() fuse.Status {
+	// fflush does nothing
 	return fuse.OK
 }
 
@@ -106,9 +107,11 @@ func (f *BufferFile) Fsync(flags int) (code fuse.Status) {
 }
 
 func (f *BufferFile) Allocate(off uint64, sz uint64, mode uint32) fuse.Status {
-	return fuse.OK
+	// fallocate does not make sense for this filesystem
+	return fuse.ENOSYS
 }
 
 func (f *BufferFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
+	// TODO: keep this somewhere
 	return fuse.OK
 }
