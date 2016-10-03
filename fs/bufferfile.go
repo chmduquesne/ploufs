@@ -39,11 +39,14 @@ func (f *BufferFile) InnerFile() nodefs.File {
 }
 
 func (f *BufferFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status) {
+	// It is assumed that the file exists
 	f.lock.Lock()
+
+	// First, read what we want from the wrapped file
 	b := make([]byte, len(buf))
 	f.File.Read(b, off)
 
-	// Bring in the result of the Read() into a Fileslice
+	// Bring in the result into a Fileslice
 	slice := &FileSlice{
 		data:   b,
 		offset: off,
@@ -94,24 +97,27 @@ func (f *BufferFile) Write(data []byte, off int64) (uint32, fuse.Status) {
 	return uint32(len(data)), fuse.OK
 }
 
-func (f *BufferFile) Release() {}
+func (f *BufferFile) Release() {
+	// Do we want to do something?
+}
 
 func (f *BufferFile) Flush() fuse.Status {
-	// fflush does nothing
+	// Report success, but actually we will wait for sync to do anyting
 	return fuse.OK
 }
 
 func (f *BufferFile) Fsync(flags int) (code fuse.Status) {
-	// TODO: actually write changes to disk
+	// TODO: implement this
+	return fuse.OK
+}
+
+func (f *BufferFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
+	// TODO: implement this
 	return fuse.OK
 }
 
 func (f *BufferFile) Allocate(off uint64, sz uint64, mode uint32) fuse.Status {
-	// fallocate does not make sense for this filesystem
+	// This filesystem does not offer any guarantee that the changes will
+	// be written.
 	return fuse.ENOSYS
-}
-
-func (f *BufferFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
-	// TODO: keep this somewhere
-	return fuse.OK
 }

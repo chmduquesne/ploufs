@@ -8,11 +8,6 @@ import (
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
-type attrResponse struct {
-	attr   *fuse.Attr
-	status fuse.Status
-}
-
 type dirResponse struct {
 	entries []fuse.DirEntry
 	status  fuse.Status
@@ -22,7 +17,7 @@ type BufferFS struct {
 	pathfs.FileSystem
 	bufferedWrites map[string]*BufferFile
 	bufferedStats  map[string]*fuse.StatfsOut
-	bufferedAttr   map[string]*attrResponse
+	bufferedAttr   map[string]*fuse.Attr
 	bufferedDir    map[string]*dirResponse
 }
 
@@ -31,7 +26,7 @@ func NewBufferFS(wrapped pathfs.FileSystem) pathfs.FileSystem {
 		FileSystem:     wrapped,
 		bufferedWrites: make(map[string]*BufferFile),
 		bufferedStats:  make(map[string]*fuse.StatfsOut),
-		bufferedAttr:   make(map[string]*attrResponse),
+		bufferedAttr:   make(map[string]*fuse.Attr),
 		bufferedDir:    make(map[string]*dirResponse),
 	}
 }
@@ -51,7 +46,7 @@ func (fs *BufferFS) OnUnmount() {}
 func (fs *BufferFS) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status) {
 	cached := fs.bufferedAttr[name]
 	if cached != nil {
-		return cached.attr, cached.status
+		return cached, fuse.OK
 	}
 	return fs.FileSystem.GetAttr(name, context)
 }
@@ -78,10 +73,27 @@ func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (node
 }
 
 func (fs *BufferFS) Chmod(path string, mode uint32, context *fuse.Context) (code fuse.Status) {
+	a, code := fs.GetAttr(path, context)
+	if a.Mode == mode {
+		// The call does not change anything
+		return fuse.OK
+	}
+
+	a.Mode = mode
+	fs.bufferedAttr[path] = a
 	return fuse.OK
 }
 
 func (fs *BufferFS) Chown(path string, uid uint32, gid uint32, context *fuse.Context) (code fuse.Status) {
+	a, code := fs.GetAttr(path, context)
+	if a.Uid == uid && a.Gid == gid {
+		// The call does not change anything
+		return fuse.OK
+	}
+
+	a.Uid = uid
+	a.Gid = gid
+	fs.bufferedAttr[path] = a
 	return fuse.OK
 }
 
@@ -94,35 +106,42 @@ func (fs *BufferFS) Readlink(name string, context *fuse.Context) (out string, co
 }
 
 func (fs *BufferFS) Mknod(name string, mode uint32, dev uint32, context *fuse.Context) (code fuse.Status) {
-	return fuse.OK
+	// No point in implementing this. It is only called for creation
+	// non-directory, non-symlink, non regular files (cf libfuse fuse.h
+	// L139) and we support only those. Other cases would be character
+	// special files, block special files, FIFO, and unix sockets. None of
+	// those are of interest for us.
+	return fuse.ENOSYS
 }
 
 func (fs *BufferFS) Mkdir(path string, mode uint32, context *fuse.Context) (code fuse.Status) {
 	return fuse.OK
 }
 
-// Don't use os.Remove, it removes twice (unlink followed by rmdir).
 func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status) {
-	return fuse.OK
+	// We don't support hard links (should we?)
+	return fuse.ENOSYS
 }
 
 func (fs *BufferFS) Rmdir(name string, context *fuse.Context) (code fuse.Status) {
-	return fuse.OK
+	return fuse.ENOSYS
 }
 
 func (fs *BufferFS) Symlink(pointedTo string, linkName string, context *fuse.Context) (code fuse.Status) {
-	return fuse.OK
+	return fuse.ENOSYS
 }
 
 func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context) (codee fuse.Status) {
-	return fuse.OK
+	return fuse.ENOSYS
 }
 
 func (fs *BufferFS) Link(orig string, newName string, context *fuse.Context) (code fuse.Status) {
-	return fuse.OK
+	// We don't support hard links for now
+	return fuse.ENOSYS
 }
 
 func (fs *BufferFS) Access(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
+	// Everything is allowed for now
 	return fuse.OK
 }
 
