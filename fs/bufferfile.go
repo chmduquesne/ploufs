@@ -14,6 +14,7 @@ import (
 type BufferFile struct {
 	nodefs.File
 	slices []*FileSlice
+	size   uint64
 	lock   sync.Mutex
 }
 
@@ -26,6 +27,40 @@ func NewBufferFile(wrapped nodefs.File) *BufferFile {
 		slices: nil,
 	}
 	return b
+}
+
+func (f *BufferFile) Truncate(offset uint64) fuse.Status {
+	f.lock.Lock()
+	off := int64(offset)
+	slices := make([]*FileSlice, 0)
+	var truncated *FileSlice
+	truncated = nil
+	for _, s := range f.slices {
+		// the slice is entirely before the truncation
+		if s.Beg() <= off && s.End() <= off {
+			slices = append(slices, s)
+		}
+		// the truncation is somewhere in the slice
+		if s.Beg() <= off && s.End() > off {
+			truncated = &FileSlice{
+				offset: s.offset,
+				data:   s.data[:int64(len(s.data))+s.offset-off],
+			}
+			slices = append(slices, truncated)
+		}
+	}
+	// If the truncation is after all the slices, we need to extend the
+	// file with zeros
+	//if len(slices) == len(f.slices) && truncated == nil{
+	//	l := len(f.slices)
+	//	if l > 0 {
+	//		last := f.slices[l-1]
+
+	//	}
+	//}
+	f.slices = slices
+	f.lock.Unlock()
+	return fuse.OK
 }
 
 func (f *BufferFile) SetInode(*nodefs.Inode) {}

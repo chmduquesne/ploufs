@@ -8,36 +8,25 @@ import (
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
-type dirResponse struct {
-	entries []fuse.DirEntry
-	status  fuse.Status
-}
-
 type BufferFS struct {
 	pathfs.FileSystem
 	bufferedWrites map[string]*BufferFile
-	bufferedStats  map[string]*fuse.StatfsOut
 	bufferedAttr   map[string]*fuse.Attr
-	bufferedDir    map[string]*dirResponse
+	bufferedDir    map[string][]fuse.DirEntry
 }
 
 func NewBufferFS(wrapped pathfs.FileSystem) pathfs.FileSystem {
 	return &BufferFS{
 		FileSystem:     wrapped,
 		bufferedWrites: make(map[string]*BufferFile),
-		bufferedStats:  make(map[string]*fuse.StatfsOut),
 		bufferedAttr:   make(map[string]*fuse.Attr),
-		bufferedDir:    make(map[string]*dirResponse),
+		bufferedDir:    make(map[string][]fuse.DirEntry),
 	}
 }
 
-func (fs *BufferFS) StatFs(name string) *fuse.StatfsOut {
-	cached := fs.bufferedStats[name]
-	if cached != nil {
-		return cached
-	}
-	return fs.FileSystem.StatFs(name)
-}
+//func (fs *BufferFS) StatFs(name string) *fuse.StatfsOut {
+//	return fuse.ENOSYS
+//}
 
 func (fs *BufferFS) OnMount(nodeFs *pathfs.PathNodeFs) {}
 
@@ -54,7 +43,7 @@ func (fs *BufferFS) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, c
 func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
 	cached := fs.bufferedDir[name]
 	if cached != nil {
-		return cached.entries, cached.status
+		return cached, fuse.OK
 	}
 	return fs.FileSystem.OpenDir(name, context)
 }
@@ -106,8 +95,8 @@ func (fs *BufferFS) Readlink(name string, context *fuse.Context) (out string, co
 }
 
 func (fs *BufferFS) Mknod(name string, mode uint32, dev uint32, context *fuse.Context) (code fuse.Status) {
-	// No point in implementing this. It is only called for creation
-	// non-directory, non-symlink, non regular files (cf libfuse fuse.h
+	// No point in implementing this. It is only called for creation of
+	// non-directory, non-symlink, non-regular files (cf libfuse fuse.h
 	// L139) and we support only those. Other cases would be character
 	// special files, block special files, FIFO, and unix sockets. None of
 	// those are of interest for us.
