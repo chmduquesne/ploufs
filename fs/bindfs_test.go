@@ -129,6 +129,7 @@ func NewTestCase(t *testing.T) *testCase {
 
 	var pfs pathfs.FileSystem
 	pfs = NewBindFS(tc.orig)
+	//pfs = NewBufferFS(pfs)
 
 	tc.pathFs = pathfs.NewPathNodeFs(pfs, &pathfs.PathNodeFsOptions{
 		ClientInodes: true})
@@ -994,5 +995,22 @@ func TestChgrp(t *testing.T) {
 	err = f.Chown(-1, os.Getgid())
 	if err != nil {
 		t.Errorf("Chown failed: %v", err)
+	}
+}
+
+// Check that "." and ".." exists. syscall.Getdents is linux specific.
+func TestSpecialEntries(t *testing.T) {
+	tc := NewTestCase(t)
+	defer tc.Cleanup()
+
+	d, err := os.Open(tc.mnt)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer d.Close()
+	buf := make([]byte, 100)
+	n, err := syscall.Getdents(int(d.Fd()), buf)
+	if n == 0 {
+		t.Errorf("directory is empty, entries '.' and '..' are missing")
 	}
 }
