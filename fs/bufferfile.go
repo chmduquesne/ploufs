@@ -13,8 +13,9 @@ import (
 
 type BufferFile struct {
 	nodefs.File
+	attr   *fuse.Attr
 	slices []*FileSlice
-	size   uint64
+	orig   string
 	lock   sync.Mutex
 }
 
@@ -29,36 +30,42 @@ func NewBufferFile(wrapped nodefs.File) *BufferFile {
 	return b
 }
 
+func (f *BufferFile) Size() uint64 {
+	return f.attr.Size
+}
+
 func (f *BufferFile) Truncate(offset uint64) fuse.Status {
 	f.lock.Lock()
 	off := int64(offset)
 	slices := make([]*FileSlice, 0)
-	var truncated *FileSlice
-	truncated = nil
+	// Remove all the slices after the truncation
 	for _, s := range f.slices {
 		// the slice is entirely before the truncation
 		if s.Beg() <= off && s.End() <= off {
 			slices = append(slices, s)
 		}
-		// the truncation is somewhere in the slice
+		// this slice is truncated
 		if s.Beg() <= off && s.End() > off {
-			truncated = &FileSlice{
+			// cut the slice
+			truncated := &FileSlice{
 				offset: s.offset,
 				data:   s.data[:int64(len(s.data))+s.offset-off],
 			}
 			slices = append(slices, truncated)
 		}
 	}
-	// If the truncation is after all the slices, we need to extend the
-	// file with zeros
-	//if len(slices) == len(f.slices) && truncated == nil{
-	//	l := len(f.slices)
-	//	if l > 0 {
-	//		last := f.slices[l-1]
-
-	//	}
-	//}
 	f.slices = slices
+
+	if offset <= f.Size() {
+		// The cut shortens the file
+		// We don't need to create an extra slice because we will always
+		// be able to read whatever already exists
+		f.attr.Size = offset
+	} else {
+		// man 2 truncate says we need to extend the file with 0
+		buf := make([]byte, offset-f.Size())
+		f.Write(buf, int64(f.Size()))
+	}
 	f.lock.Unlock()
 	return fuse.OK
 }

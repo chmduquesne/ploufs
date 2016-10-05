@@ -68,7 +68,7 @@ func (fs *BufferFS) Chmod(path string, mode uint32, context *fuse.Context) (code
 		return fuse.OK
 	}
 
-	a.Mode = mode
+	a.Mode = (a.Mode & 0xfe00) | mode
 	fs.bufferedAttr[path] = a
 	return fuse.OK
 }
