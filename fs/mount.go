@@ -36,10 +36,10 @@ func Mount(orig string, mountpoint string) {
 	//pathFs := pathfs.NewPathNodeFs(bindfs, pathNodeFsOpts)
 	pathFs := pathfs.NewPathNodeFs(bufferfs, pathNodeFsOpts)
 	mountOpts := &fuse.MountOptions{
-		Options:        envVarAsTokens("MOUNT_OPTIONS"),
-		Name:           path.Base(os.Args[0]),
-		FsName:         absolutePath(orig),
-		Debug:          envVarExists("DEBUG"),
+		Options: envVarAsTokens("MOUNT_OPTIONS"),
+		Name:    path.Base(os.Args[0]),
+		FsName:  absolutePath(orig),
+		//Debug:          envVarExists("DEBUG"),
 		SingleThreaded: envVarExists("SINGLE_THREADED"),
 	}
 	nodefsOpts := &nodefs.Options{

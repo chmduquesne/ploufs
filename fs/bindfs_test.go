@@ -46,63 +46,6 @@ type testCase struct {
 
 const testTtl = 100 * time.Millisecond
 
-// Mkdir is a utility wrapper for os.Mkdir, aborting the test if it fails.
-func (tc *testCase) Mkdir(name string, mode os.FileMode) {
-	if err := os.Mkdir(name, mode); err != nil {
-		tc.tester.Fatalf("Mkdir(%q,%v): %v", name, mode, err)
-	}
-}
-
-func VerboseTest() bool {
-	flag := flag.Lookup("test.v")
-	return flag != nil && flag.Value.String() == "true"
-}
-
-func TempDir() string {
-	frames := make([]uintptr, 10) // at least 1 entry needed
-	n := runtime.Callers(1, frames)
-
-	lastName := ""
-	for _, pc := range frames[:n] {
-		f := runtime.FuncForPC(pc)
-		name := f.Name()
-		i := strings.LastIndex(name, ".")
-		if i >= 0 {
-			name = name[i+1:]
-		}
-		if strings.HasPrefix(name, "Test") {
-			lastName = name
-		}
-	}
-
-	dir, err := ioutil.TempDir("", lastName)
-	if err != nil {
-		log.Panicf("TempDir(%s): %v", lastName, err)
-	}
-	return dir
-}
-
-func clearStatfs(s *syscall.Statfs_t) {
-	empty := syscall.Statfs_t{}
-	s.Type = 0
-	s.Fsid = empty.Fsid
-	s.Spare = empty.Spare
-	// TODO - figure out what this is for.
-	s.Flags = 0
-}
-
-// WriteFile is a utility wrapper for ioutil.WriteFile, aborting the
-// test if it fails.
-func (tc *testCase) WriteFile(name string, content []byte, mode os.FileMode) {
-	if err := ioutil.WriteFile(name, content, mode); err != nil {
-		if len(content) > 50 {
-			content = append(content[:50], '.', '.', '.')
-		}
-
-		tc.tester.Fatalf("WriteFile(%q, %q, %o): %v", name, content, mode, err)
-	}
-}
-
 // Create and mount filesystem.
 func NewTestCase(t *testing.T) *testCase {
 	tc := &testCase{}
@@ -143,7 +86,7 @@ func NewTestCase(t *testing.T) *testCase {
 	tc.state, err = fuse.NewServer(
 		fuse.NewRawFileSystem(tc.connector.RawFS()), tc.mnt, &fuse.MountOptions{
 			SingleThreaded: true,
-			Debug:          VerboseTest(),
+			//Debug:          VerboseTest(),
 		})
 	if err != nil {
 		t.Fatal("NewServer:", err)
@@ -1012,5 +955,63 @@ func TestSpecialEntries(t *testing.T) {
 	n, err := syscall.Getdents(int(d.Fd()), buf)
 	if n == 0 {
 		t.Errorf("directory is empty, entries '.' and '..' are missing")
+	}
+}
+
+// imported from testutils
+// Mkdir is a utility wrapper for os.Mkdir, aborting the test if it fails.
+func (tc *testCase) Mkdir(name string, mode os.FileMode) {
+	if err := os.Mkdir(name, mode); err != nil {
+		tc.tester.Fatalf("Mkdir(%q,%v): %v", name, mode, err)
+	}
+}
+
+func VerboseTest() bool {
+	flag := flag.Lookup("test.v")
+	return flag != nil && flag.Value.String() == "true"
+}
+
+func TempDir() string {
+	frames := make([]uintptr, 10) // at least 1 entry needed
+	n := runtime.Callers(1, frames)
+
+	lastName := ""
+	for _, pc := range frames[:n] {
+		f := runtime.FuncForPC(pc)
+		name := f.Name()
+		i := strings.LastIndex(name, ".")
+		if i >= 0 {
+			name = name[i+1:]
+		}
+		if strings.HasPrefix(name, "Test") {
+			lastName = name
+		}
+	}
+
+	dir, err := ioutil.TempDir("", lastName)
+	if err != nil {
+		log.Panicf("TempDir(%s): %v", lastName, err)
+	}
+	return dir
+}
+
+func clearStatfs(s *syscall.Statfs_t) {
+	empty := syscall.Statfs_t{}
+	s.Type = 0
+	s.Fsid = empty.Fsid
+	s.Spare = empty.Spare
+	// TODO - figure out what this is for.
+	s.Flags = 0
+}
+
+// WriteFile is a utility wrapper for ioutil.WriteFile, aborting the
+// test if it fails.
+func (tc *testCase) WriteFile(name string, content []byte, mode os.FileMode) {
+	if err := ioutil.WriteFile(name, content, mode); err != nil {
+		if len(content) > 50 {
+			content = append(content[:50], '.', '.', '.')
+		}
+
+		tc.tester.Fatalf("WriteFile(%q, %q, %o): %v", name, content, mode, err)
 	}
 }
