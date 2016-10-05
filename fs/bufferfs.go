@@ -3,8 +3,6 @@
 package fs
 
 import (
-	"log"
-
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
@@ -37,61 +35,42 @@ func (fs *BufferFS) OnUnmount() {}
 func (fs *BufferFS) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status) {
 	cached := fs.bufferedAttr[name]
 	if cached != nil {
-		a, code = cached, fuse.OK
-	} else {
-		a, code = fs.FileSystem.GetAttr(name, context)
+		return cached, fuse.OK
 	}
-	log.Printf("[pid=%v] BufferFS.GetAttr(%v) -> [cached=%v] (%v, %v)\n", context.Pid, name, cached != nil, a, code)
-	return
+	return fs.FileSystem.GetAttr(name, context)
 }
 
 func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
 	cached := fs.bufferedDir[name]
 	if cached != nil {
-		stream, status = cached, fuse.OK
-	} else {
-		stream, status = fs.FileSystem.OpenDir(name, context)
+		return cached, fuse.OK
 	}
-	log.Printf("[pid=%v] BufferFS.OpenDir(%v) -> [cached=%v] (%v, %v)\n", context.Pid, name, cached != nil, stream, status)
-	return
+	return fs.FileSystem.OpenDir(name, context)
 }
 
-func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (file nodefs.File, status fuse.Status) {
-	file = fs.bufferedWrites[name]
-	incache := true
-	if file == nil {
-		incache = false
+func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
+	res := fs.bufferedWrites[name]
+	if res == nil {
 		wrappedfile, status := fs.FileSystem.Open(name, flags, context)
 		if status != fuse.OK {
 			return nil, status
 		}
-		file = NewBufferFile(wrappedfile)
-		fs.bufferedWrites[name], _ = file.(*BufferFile)
+		res = NewBufferFile(wrappedfile)
+		fs.bufferedWrites[name] = res
 	}
-	status = fuse.OK
-	log.Printf("[pid=%v] BufferFS.Open(%v, %v) -> [cached=%v] (%v, %v)\n", context.Pid, name, incache, file, status)
-	return
+	return res, fuse.OK
 }
 
 func (fs *BufferFS) Chmod(path string, mode uint32, context *fuse.Context) (code fuse.Status) {
-
 	a, code := fs.GetAttr(path, context)
 	if a.Mode == mode {
 		// The call does not change anything
 		return fuse.OK
 	}
 
-	a.Mode = (a.Mode & 0xfe00) | mode
+	a.Mode = mode
 	fs.bufferedAttr[path] = a
 	return fuse.OK
-	//a, _ := fs.GetAttr(path, context)
-	////a.Mode = mode
-	////fs.bufferedAttr[path] = a
-	////return fuse.OK
-	//code = fs.FileSystem.Chmod(path, mode, context)
-	//log.Printf("Mode: %o, Wanted: %o\n", a.Mode, (a.Mode&0xfe00)|mode)
-	//log.Printf("[pid=%v] BufferFS.Chmod(%v, %o) -> [cached=%v] %v\n", context.Pid, path, mode, true, code)
-	//return
 }
 
 func (fs *BufferFS) Chown(path string, uid uint32, gid uint32, context *fuse.Context) (code fuse.Status) {
@@ -152,9 +131,7 @@ func (fs *BufferFS) Link(orig string, newName string, context *fuse.Context) (co
 
 func (fs *BufferFS) Access(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
 	// Everything is allowed for now
-	code = fuse.OK
-	log.Printf("[pid=%v] BufferFS.Access(%v) -> %v\n", context.Pid, name, code)
-	return
+	return fuse.OK
 }
 
 func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
