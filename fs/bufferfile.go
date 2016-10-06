@@ -103,12 +103,12 @@ func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 func (f *OverlayFile) SetInode(*nodefs.Inode) {}
 
 func (f *OverlayFile) String() string {
-	return fmt.Sprintf("OverlayFile(%s)", f.File.String())
+	return fmt.Sprintf("OverlayFile(%s)", f.source)
 }
 
-func (f *OverlayFile) InnerFile() nodefs.File {
-	return f.File
-}
+//func (f *OverlayFile) InnerFile() nodefs.File {
+//	return f.File
+//}
 
 func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status) {
 	// It is assumed that the file exists
