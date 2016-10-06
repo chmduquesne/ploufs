@@ -16,7 +16,7 @@ import (
 )
 
 func Mount(orig string, mountpoint string) {
-	bindfs := NewBindFS(orig)
+	bindfs := pathfs.NewLoopbackFileSystem(orig)
 	bufferfs := NewBufferFS(bindfs)
 	envVarExists := func(key string) bool { return os.Getenv(key) != "" }
 	absolutePath := func(name string) string {

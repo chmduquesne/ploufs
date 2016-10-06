@@ -71,7 +71,7 @@ func NewTestCase(t *testing.T) *testCase {
 	tc.origSubdir = filepath.Join(tc.orig, subdir)
 
 	var pfs pathfs.FileSystem
-	pfs = NewBindFS(tc.orig)
+	pfs = pathfs.NewLoopbackFileSystem(tc.orig)
 	//pfs = NewBufferFS(pfs)
 
 	tc.pathFs = pathfs.NewPathNodeFs(pfs, &pathfs.PathNodeFsOptions{

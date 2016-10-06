@@ -9,32 +9,62 @@ import (
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
+	"github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
-type BufferFile struct {
+const (
+	None = "/"
+)
+
+type OverlayFile struct {
 	nodefs.File
-	attr   *fuse.Attr
-	slices []*FileSlice
-	orig   string
-	lock   sync.Mutex
+	fs      pathfs.FileSystem
+	source  string
+	attr    *fuse.Attr
+	slices  []*FileSlice
+	entries []fuse.DirEntry
+	deleted bool
+	lock    sync.Mutex
 }
 
-// Bufferfile buffers all modifications made to the filesystem in memory
-// in order to apply them later, in one single operation.
-// It relies on another file implementation to get the existing data.
-func NewBufferFile(wrapped nodefs.File) *BufferFile {
-	b := &BufferFile{
-		File:   wrapped,
-		slices: nil,
+func NewOverlayFile(fs pathfs.FileSystem, source string, context *fuse.Context) *OverlayFile {
+	attr, _ := fs.GetAttr(source, context)
+	b := &OverlayFile{
+		File:   nodefs.NewDefaultFile(),
+		fs:     fs,
+		source: source,
+		attr:   attr,
 	}
 	return b
 }
 
-func (f *BufferFile) Size() uint64 {
+func (f *OverlayFile) GetAttr(out *fuse.Attr) (code fuse.Status) {
+	if f.deleted {
+		return fuse.ENOENT
+	}
+	out.Ino = f.attr.Ino
+	out.Size = f.attr.Size
+	out.Blocks = f.attr.Blocks
+	out.Atime = f.attr.Atime
+	out.Mtime = f.attr.Mtime
+	out.Ctime = f.attr.Ctime
+	out.Atimensec = f.attr.Atimensec
+	out.Mtimensec = f.attr.Mtimensec
+	out.Ctimensec = f.attr.Ctimensec
+	out.Mode = f.attr.Mode
+	out.Nlink = f.attr.Nlink
+	out.Owner = f.attr.Owner
+	out.Rdev = f.attr.Rdev
+	out.Blksize = f.attr.Blksize
+	out.Padding = f.attr.Padding
+	return fuse.OK
+}
+
+func (f *OverlayFile) Size() uint64 {
 	return f.attr.Size
 }
 
-func (f *BufferFile) Truncate(offset uint64) fuse.Status {
+func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 	f.lock.Lock()
 	off := int64(offset)
 	slices := make([]*FileSlice, 0)
@@ -70,17 +100,17 @@ func (f *BufferFile) Truncate(offset uint64) fuse.Status {
 	return fuse.OK
 }
 
-func (f *BufferFile) SetInode(*nodefs.Inode) {}
+func (f *OverlayFile) SetInode(*nodefs.Inode) {}
 
-func (f *BufferFile) String() string {
-	return fmt.Sprintf("BufferFile(%s)", f.File.String())
+func (f *OverlayFile) String() string {
+	return fmt.Sprintf("OverlayFile(%s)", f.File.String())
 }
 
-func (f *BufferFile) InnerFile() nodefs.File {
+func (f *OverlayFile) InnerFile() nodefs.File {
 	return f.File
 }
 
-func (f *BufferFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status) {
+func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status) {
 	// It is assumed that the file exists
 	f.lock.Lock()
 
@@ -109,8 +139,10 @@ func (f *BufferFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status) 
 	return res, fuse.OK
 }
 
-func (f *BufferFile) Write(data []byte, off int64) (uint32, fuse.Status) {
+func (f *OverlayFile) Write(data []byte, off int64) (uint32, fuse.Status) {
 	f.lock.Lock()
+	defer f.lock.Unlock()
+
 	toInsert := &FileSlice{
 		data:   data,
 		offset: off,
@@ -135,31 +167,48 @@ func (f *BufferFile) Write(data []byte, off int64) (uint32, fuse.Status) {
 		}
 	}
 	f.slices = slices
-	f.lock.Unlock()
+
+	// Update the file size if needed
+	endOfWrite := uint64(off) + uint64(len(data))
+	if endOfWrite > f.Size() {
+		f.attr.Size = endOfWrite
+	}
+
 	return uint32(len(data)), fuse.OK
 }
 
-func (f *BufferFile) Release() {
+func (f *OverlayFile) Release() {
 	// Do we want to do something?
 }
 
-func (f *BufferFile) Flush() fuse.Status {
+func (f *OverlayFile) Flush() fuse.Status {
 	// Report success, but actually we will wait for sync to do anyting
 	return fuse.OK
 }
 
-func (f *BufferFile) Fsync(flags int) (code fuse.Status) {
+func (f *OverlayFile) Fsync(flags int) (code fuse.Status) {
 	// TODO: implement this
 	return fuse.OK
 }
 
-func (f *BufferFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
+func (f *OverlayFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
 	// TODO: implement this
 	return fuse.OK
 }
 
-func (f *BufferFile) Allocate(off uint64, sz uint64, mode uint32) fuse.Status {
+func (f *OverlayFile) Allocate(off uint64, sz uint64, mode uint32) fuse.Status {
 	// This filesystem does not offer any guarantee that the changes will
 	// be written.
 	return fuse.ENOSYS
+}
+
+func (f *OverlayFile) Chmod(mode uint32) fuse.Status {
+	f.attr.Mode = (f.attr.Mode & 0xfe00) | mode
+	return fuse.OK
+}
+
+func (f *OverlayFile) Chown(uid uint32, gid uint32) fuse.Status {
+	f.attr.Uid = uid
+	f.attr.Gid = gid
+	return fuse.OK
 }
