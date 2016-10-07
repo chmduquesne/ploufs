@@ -4,6 +4,7 @@ package fs
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	None = "/"
+	NoSource = "/"
 )
 
 type OverlayFile struct {
@@ -111,12 +112,25 @@ func (f *OverlayFile) String() string {
 //}
 
 func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status) {
-	// It is assumed that the file exists
 	f.lock.Lock()
+	defer f.lock.Unlock()
 
-	// First, read what we want from the wrapped file
+	// man 2 read: If the file offset is at or past the end of file, no
+	// bytes are read, and read() returns zero
+	if uint64(off) >= f.Size() {
+		return fuse.ReadResultData(make([]byte, 0)), fuse.OK
+	}
+
 	b := make([]byte, len(buf))
-	f.File.Read(b, off)
+	// First, read what we want from the wrapped file
+	if f.source != NoSource {
+		file, status := f.fs.Open(f.source, fuse.R_OK, nil)
+		if status != fuse.OK {
+			log.Println("Could not open the underlying file in read mode")
+		}
+		file.Read(b, off)
+		file.Release()
+	}
 
 	// Bring in the result into a Fileslice
 	slice := &FileSlice{
@@ -135,7 +149,6 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 	n := copy(buf, slice.data)
 	res := fuse.ReadResultData(buf[:n])
 
-	f.lock.Unlock()
 	return res, fuse.OK
 }
 
