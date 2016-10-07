@@ -19,24 +19,35 @@ const (
 
 type OverlayFile struct {
 	nodefs.File
-	fs      pathfs.FileSystem
-	source  string
-	attr    *fuse.Attr
-	slices  []*FileSlice
-	entries []fuse.DirEntry
-	deleted bool
-	lock    sync.Mutex
+	wrappedFS pathfs.FileSystem
+	source    string
+	attr      *fuse.Attr
+	slices    []*FileSlice
+	entries   []fuse.DirEntry
+	deleted   bool
+	context   *fuse.Context
+	lock      sync.Mutex
 }
 
-func NewOverlayFile(fs pathfs.FileSystem, source string, context *fuse.Context) *OverlayFile {
-	attr, _ := fs.GetAttr(source, context)
+func NewOverlayFile(wrappedFS pathfs.FileSystem, source string, context *fuse.Context) *OverlayFile {
+	log.Printf("Creating overlay file for %s\n", source)
+	attr, status := wrappedFS.GetAttr(source, context)
+	if status != fuse.OK {
+		source = NoSource
+		log.Printf("Underlying file system reports no source", source)
+	}
 	b := &OverlayFile{
-		File:   nodefs.NewDefaultFile(),
-		fs:     fs,
-		source: source,
-		attr:   attr,
+		File:      nodefs.NewDefaultFile(),
+		wrappedFS: wrappedFS,
+		source:    source,
+		attr:      attr,
+		context:   context,
 	}
 	return b
+}
+
+func (f *OverlayFile) String() string {
+	return fmt.Sprintf("OverlayFile{\nsource: %s	attr: %v\n	n_slices: %v\n	deleted: %v\n}", f.source, f.attr, len(f.slices), f.deleted)
 }
 
 func (f *OverlayFile) GetAttr(out *fuse.Attr) (code fuse.Status) {
@@ -67,6 +78,8 @@ func (f *OverlayFile) Size() uint64 {
 
 func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 	f.lock.Lock()
+	defer f.lock.Unlock()
+
 	off := int64(offset)
 	slices := make([]*FileSlice, 0)
 	// Remove all the slices after the truncation
@@ -93,19 +106,16 @@ func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 		// be able to read whatever already exists
 		f.attr.Size = offset
 	} else {
-		// man 2 truncate says we need to extend the file with 0
+		// man 2 truncate says we need to extend the file with 0 which is
+		// equivalent to a call to write from the end of the file to the
+		// specified new end.
 		buf := make([]byte, offset-f.Size())
 		f.Write(buf, int64(f.Size()))
 	}
-	f.lock.Unlock()
 	return fuse.OK
 }
 
 func (f *OverlayFile) SetInode(*nodefs.Inode) {}
-
-func (f *OverlayFile) String() string {
-	return fmt.Sprintf("OverlayFile(%s)", f.source)
-}
 
 //func (f *OverlayFile) InnerFile() nodefs.File {
 //	return f.File
@@ -124,7 +134,7 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 	b := make([]byte, len(buf))
 	// First, read what we want from the wrapped file
 	if f.source != NoSource {
-		file, status := f.fs.Open(f.source, fuse.R_OK, nil)
+		file, status := f.wrappedFS.Open(f.source, fuse.R_OK, f.context)
 		if status != fuse.OK {
 			log.Println("Could not open the underlying file in read mode")
 		}
@@ -144,6 +154,9 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 			slice = slice.Merge(s)
 		}
 	}
+
+	log.Printf("File: %v\n", f)
+	log.Printf("Merged slices: %v\n", slice)
 
 	// Copy whatever has been brought in
 	n := copy(buf, slice.data)

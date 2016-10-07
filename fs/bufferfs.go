@@ -9,13 +9,18 @@ import (
 )
 
 type BufferFS struct {
+	// We want a default implementation that fails for compile reasons
 	pathfs.FileSystem
-	overlay map[string]*OverlayFile
+	// We also want a wrapped target, but we don't rely on its
+	// implementation by default
+	wrappedFS pathfs.FileSystem
+	overlay   map[string]*OverlayFile
 }
 
 func NewBufferFS(wrapped pathfs.FileSystem) pathfs.FileSystem {
 	return &BufferFS{
-		FileSystem: wrapped,
+		FileSystem: pathfs.NewDefaultFileSystem(),
+		wrappedFS:  wrapped,
 		overlay:    make(map[string]*OverlayFile),
 	}
 }
@@ -35,7 +40,7 @@ func (fs *BufferFS) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, c
 		code := overlay.GetAttr(&a)
 		return &a, code
 	}
-	return fs.FileSystem.GetAttr(name, context)
+	return fs.wrappedFS.GetAttr(name, context)
 }
 
 func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
@@ -47,13 +52,13 @@ func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.D
 			return overlay.entries, fuse.OK
 		}
 	}
-	return fs.FileSystem.OpenDir(name, context)
+	return fs.wrappedFS.OpenDir(name, context)
 }
 
 func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
 	overlay := fs.overlay[name]
 	if overlay == nil {
-		overlay = NewOverlayFile(fs.FileSystem, name, context)
+		overlay = NewOverlayFile(fs.wrappedFS, name, context)
 		fs.overlay[name] = overlay
 	}
 	return overlay, fuse.OK
@@ -122,7 +127,7 @@ func (fs *BufferFS) Chown(path string, uid uint32, gid uint32, context *fuse.Con
 //func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
 //	res := fs.overlay[name]
 //	if res == nil {
-//		wrappedfile, status := fs.FileSystem.Create(name, flags, mode, context)
+//		wrappedfile, status := fs.wrappedFS.Create(name, flags, mode, context)
 //		if status != fuse.OK {
 //			return nil, status
 //		}
