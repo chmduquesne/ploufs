@@ -2,11 +2,50 @@
 
 package fs
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+
+	"github.com/hanwen/go-fuse/fuse"
+)
 
 type FileSlice struct {
 	offset int64
 	data   []byte
+}
+
+// So that FileSlice satisfies the fuse.ReadResult interface
+func (s *FileSlice) Done() {
+}
+
+// So that FileSlice satisfies the fuse.ReadResult interface
+func (s *FileSlice) Bytes(buf []byte) ([]byte, fuse.Status) {
+	return s.data, fuse.OK
+}
+
+// So that FileSlice satisfies the fuse.ReadResult interface
+func (s *FileSlice) Size() int {
+	return len(s.data)
+}
+
+// Returns a shorter FileSlice (beware that data is not a copy)
+func (s *FileSlice) Shortened(l int) *FileSlice {
+	if l > len(s.data) {
+		l = len(s.data)
+	}
+	return &FileSlice{
+		offset: s.offset,
+		data:   s.data[:l],
+	}
+}
+
+// Returns a shorter FileSlice (by absolute offset)
+func (s *FileSlice) Truncated(off int64) *FileSlice {
+	if off <= s.Beg() {
+		return s.Shortened(0)
+	} else {
+		return s.Shortened(int(off - s.Beg()))
+	}
 }
 
 func (s *FileSlice) Beg() int64 {
@@ -18,27 +57,34 @@ func (s *FileSlice) End() int64 {
 }
 
 func (s *FileSlice) String() string {
-	return fmt.Sprintf("FileSlice{%v, %v }", s.offset, s.data)
+	data := fmt.Sprintf("%v", s.data)
+	threshold := 10
+	if len(s.data) > threshold {
+		data = fmt.Sprintf("%v...", s.data[:threshold])
+	}
+	return fmt.Sprintf("FileSlice{%v, (len=%v) %v}", s.offset, len(s.data), data)
 }
 
-func (s *FileSlice) Overlaps(other *FileSlice) bool {
+func (s *FileSlice) Overlaps(other *FileSlice) (res bool) {
+	res = false
 	// Beginning of the other slice inside s
 	if other.Beg() >= s.Beg() && other.Beg() <= s.End() {
-		return true
+		res = true
 	}
 	// End of the other slice inside s
 	if other.End() >= s.Beg() && other.End() <= s.End() {
-		return true
+		res = true
 	}
 	// s is contained in the other slice
 	if other.Beg() <= s.Beg() && other.End() >= s.End() {
-		return true
+		res = true
 	}
-	return false
+	log.Printf("[%v, %v] overlaps [%v, %v]? -> %v", s.Beg(), s.End(), other.Beg(), other.End(), res)
+	return
 
 }
 
-func (s *FileSlice) Merge(other *FileSlice) *FileSlice {
+func (s *FileSlice) BringIn(other *FileSlice) *FileSlice {
 	// We assume the slices overlap
 
 	min := func(a, b int64) int64 {
@@ -67,9 +113,8 @@ func (s *FileSlice) Merge(other *FileSlice) *FileSlice {
 		copy(data, other.data)
 	}
 
-	res := &FileSlice{
+	return &FileSlice{
 		data:   data,
 		offset: offset,
 	}
-	return res
 }

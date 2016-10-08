@@ -91,11 +91,7 @@ func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 		// this slice is truncated
 		if s.Beg() <= off && s.End() > off {
 			// cut the slice
-			truncated := &FileSlice{
-				offset: s.offset,
-				data:   s.data[:int64(len(s.data))+s.offset-off],
-			}
-			slices = append(slices, truncated)
+			slices = append(slices, s.Truncated(off))
 		}
 	}
 	f.slices = slices
@@ -125,42 +121,48 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	// man 2 read: If the file offset is at or past the end of file, no
-	// bytes are read, and read() returns zero
-	if uint64(off) >= f.Size() {
-		return fuse.ReadResultData(make([]byte, 0)), fuse.OK
+	n := len(buf)
+	res := &FileSlice{
+		offset: off,
+		data:   buf[:0],
 	}
 
-	b := make([]byte, len(buf))
+	// man 2 read: If the file offset is at or past the end of file, no
+	// bytes are read, and read() returns zero (== fuse.OK for us)
+	if uint64(off) >= f.Size() {
+		return res, fuse.OK
+	}
+
 	// First, read what we want from the wrapped file
 	if f.source != NoSource {
 		file, status := f.wrappedFS.Open(f.source, fuse.R_OK, f.context)
 		if status != fuse.OK {
-			log.Println("Could not open the underlying file in read mode")
+			log.Fatalf("Could not open the underlying file in read mode\n")
 		}
-		file.Read(b, off)
-		file.Release()
-	}
+		r, status := file.Read(buf, off)
+		log.Printf("ReadResult: %v\n", r)
+		if status != fuse.OK {
+			log.Fatalf("Could not read the underlying file\n")
+		}
+		log.Printf("Result from Read(): %v bytes\n", r.Size())
+		b, _ := r.Bytes(buf)
+		log.Printf("Bytes: %v\n", b)
 
-	// Bring in the result into a Fileslice
-	slice := &FileSlice{
-		data:   b,
-		offset: off,
+		res.data = b
+		file.Release()
 	}
 
 	// Merge all overlapping existing data into the result
 	for _, s := range f.slices {
-		if s.Overlaps(slice) {
-			slice = slice.Merge(s)
+		if res.Overlaps(s) {
+			res = res.BringIn(s)
 		}
 	}
 
-	log.Printf("File: %v\n", f)
-	log.Printf("Merged slices: %v\n", slice)
+	res = res.Shortened(n)
 
-	// Copy whatever has been brought in
-	n := copy(buf, slice.data)
-	res := fuse.ReadResultData(buf[:n])
+	log.Printf("File: %v\n", f)
+	log.Printf("Merged slice: %v\n", res)
 
 	return res, fuse.OK
 }
@@ -173,31 +175,38 @@ func (f *OverlayFile) Write(data []byte, off int64) (uint32, fuse.Status) {
 		data:   data,
 		offset: off,
 	}
-	// Create the slice that merges all mergeable slices
+
+	// Merge all overlapping slices together
 	for _, s := range f.slices {
 		if s.Overlaps(toInsert) {
-			toInsert = s.Merge(toInsert)
+			toInsert = s.BringIn(toInsert)
 		}
 	}
 
 	// Keep the slice sorted by offset and non overlapping
 	slices := make([]*FileSlice, 0)
-	inserted := false
+	isInserted := false
 	for _, s := range f.slices {
 		if !s.Overlaps(toInsert) {
-			if s.offset > toInsert.offset && !inserted {
+			// insert every non-overlapping slice
+			if s.Beg() > toInsert.Beg() && !isInserted {
+				// insert our slice before any other starting after
 				slices = append(slices, toInsert)
-				inserted = true
+				isInserted = true
 			}
 			slices = append(slices, s)
 		}
 	}
+	// If we did not insert the slice previously, do it now
+	if !isInserted {
+		slices = append(slices, toInsert)
+	}
 	f.slices = slices
 
 	// Update the file size if needed
-	endOfWrite := uint64(off) + uint64(len(data))
-	if endOfWrite > f.Size() {
-		f.attr.Size = endOfWrite
+	eow := uint64(int(off) + len(data))
+	if eow > f.Size() {
+		f.attr.Size = eow
 	}
 
 	return uint32(len(data)), fuse.OK
