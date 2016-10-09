@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
-	"github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
 const (
@@ -19,61 +19,37 @@ const (
 
 type OverlayFile struct {
 	nodefs.File
-	wrappedFS pathfs.FileSystem
-	source    string
-	attr      *fuse.Attr
-	slices    []*FileSlice
-	entries   []fuse.DirEntry
-	deleted   bool
-	context   *fuse.Context
-	lock      sync.Mutex
+	attr    *OverlayAttr
+	fs      *BufferFS
+	source  string
+	slices  []*FileSlice
+	context *fuse.Context
+	lock    sync.Mutex
 }
 
-func NewOverlayFile(wrappedFS pathfs.FileSystem, source string, context *fuse.Context) *OverlayFile {
+func NewOverlayFile(fs *BufferFS, source string, context *fuse.Context) *OverlayFile {
 	log.Printf("Creating overlay file for %s\n", source)
-	attr, status := wrappedFS.GetAttr(source, context)
+	_, status := fs.wrappedFS.GetAttr(source, context)
 	if status != fuse.OK {
 		source = NoSource
 		log.Printf("Underlying file system reports no source", source)
 	}
 	b := &OverlayFile{
-		File:      nodefs.NewDefaultFile(),
-		wrappedFS: wrappedFS,
-		source:    source,
-		attr:      attr,
-		context:   context,
+		File:    nodefs.NewDefaultFile(),
+		attr:    NewOverlayAttr(fs, source, fuse.S_IFREG, context),
+		fs:      fs,
+		source:  source,
+		context: context,
 	}
 	return b
 }
 
 func (f *OverlayFile) String() string {
-	return fmt.Sprintf("OverlayFile{\nsource: %s\n	attr: %v\n	n_slices: %v\n	deleted: %v\n}", f.source, f.attr, len(f.slices), f.deleted)
+	return fmt.Sprintf("OverlayFile{}")
 }
 
 func (f *OverlayFile) GetAttr(out *fuse.Attr) (code fuse.Status) {
-	if f.deleted {
-		return fuse.ENOENT
-	}
-	out.Ino = f.attr.Ino
-	out.Size = f.attr.Size
-	out.Blocks = f.attr.Blocks
-	out.Atime = f.attr.Atime
-	out.Mtime = f.attr.Mtime
-	out.Ctime = f.attr.Ctime
-	out.Atimensec = f.attr.Atimensec
-	out.Mtimensec = f.attr.Mtimensec
-	out.Ctimensec = f.attr.Ctimensec
-	out.Mode = f.attr.Mode
-	out.Nlink = f.attr.Nlink
-	out.Owner = f.attr.Owner
-	out.Rdev = f.attr.Rdev
-	out.Blksize = f.attr.Blksize
-	out.Padding = f.attr.Padding
-	return fuse.OK
-}
-
-func (f *OverlayFile) Size() uint64 {
-	return f.attr.Size
+	return f.attr.GetAttr(out)
 }
 
 func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
@@ -100,7 +76,7 @@ func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 		// The cut shortens the file
 		// We don't need to create an extra slice because we will always
 		// be able to read whatever already exists
-		f.attr.Size = offset
+		f.SetSize(offset)
 	} else {
 		// man 2 truncate says we need to extend the file with 0 which is
 		// equivalent to a call to write from the end of the file to the
@@ -135,7 +111,7 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 
 	// First, read what we want from the wrapped file
 	if f.source != NoSource {
-		file, status := f.wrappedFS.Open(f.source, fuse.R_OK, f.context)
+		file, status := f.fs.wrappedFS.Open(f.source, fuse.R_OK, f.context)
 		if status != fuse.OK {
 			log.Fatalf("Could not open the underlying file in read mode\n")
 		}
@@ -199,7 +175,7 @@ func (f *OverlayFile) Write(data []byte, off int64) (uint32, fuse.Status) {
 	// Update the file size if needed
 	eow := uint64(int(off) + len(data))
 	if eow > f.Size() {
-		f.attr.Size = eow
+		f.SetSize(eow)
 	}
 
 	return uint32(len(data)), fuse.OK
@@ -219,11 +195,6 @@ func (f *OverlayFile) Fsync(flags int) (code fuse.Status) {
 	return fuse.OK
 }
 
-func (f *OverlayFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
-	// TODO: implement this
-	return fuse.OK
-}
-
 func (f *OverlayFile) Allocate(off uint64, sz uint64, mode uint32) fuse.Status {
 	// This filesystem does not offer any guarantee that the changes will
 	// be written.
@@ -231,12 +202,50 @@ func (f *OverlayFile) Allocate(off uint64, sz uint64, mode uint32) fuse.Status {
 }
 
 func (f *OverlayFile) Chmod(mode uint32) fuse.Status {
-	f.attr.Mode = (f.attr.Mode & 0xfe00) | mode
-	return fuse.OK
+	return f.attr.Chmod(mode)
 }
 
 func (f *OverlayFile) Chown(uid uint32, gid uint32) fuse.Status {
-	f.attr.Uid = uid
-	f.attr.Gid = gid
-	return fuse.OK
+	return f.attr.Chown(uid, gid)
+}
+
+func (f *OverlayFile) Utimens(a *time.Time, m *time.Time) fuse.Status {
+	// TODO: implement this
+	return f.attr.Utimens(a, m)
+}
+
+func (f *OverlayFile) Size() uint64 {
+	return f.attr.Size()
+}
+
+func (f *OverlayFile) SetSize(sz uint64) {
+	f.attr.SetSize(sz)
+}
+
+func (f *OverlayFile) Deleted() bool {
+	return f.attr.Deleted()
+}
+
+func (f *OverlayFile) MarkDeleted() {
+	f.attr.MarkDeleted()
+}
+
+func (f *OverlayFile) Entries(context *fuse.Context) (stream []fuse.DirEntry, code fuse.Status) {
+	return stream, fuse.ENOTDIR
+}
+
+func (f *OverlayFile) AddEntry(mode uint32, name string) (code fuse.Status) {
+	return fuse.ENOTDIR
+}
+
+func (f *OverlayFile) RemoveEntry(name string) (code fuse.Status) {
+	return fuse.ENOTDIR
+}
+
+func (f *OverlayFile) Target() (target string, code fuse.Status) {
+	return "", fuse.ToStatus(syscall.ENOLINK)
+}
+
+func (f *OverlayFile) SetTarget(target string) (code fuse.Status) {
+	return fuse.ToStatus(syscall.ENOLINK)
 }

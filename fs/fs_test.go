@@ -167,7 +167,7 @@ func TestRemove(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove failed: %v", err)
 	}
-	_, err = os.Lstat(tc.origFile)
+	_, err = os.Lstat(tc.mountFile)
 	if err == nil {
 		t.Errorf("Lstat() after delete should have generated error.")
 	}
