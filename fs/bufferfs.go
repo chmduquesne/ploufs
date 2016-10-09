@@ -116,20 +116,6 @@ func (fs *BufferFS) Mknod(name string, mode uint32, dev uint32, context *fuse.Co
 	return fuse.ENOSYS
 }
 
-func (fs *BufferFS) Mkdir(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	dirname, basename := path.Split(name)
-	if dirname != "" {
-		dirname = dirname[:len(dirname)-1] // remove trailing '/'
-	}
-	parent := NewOverlayDir(fs, dirname, 0, context)
-	parent.AddEntry(fuse.S_IFDIR|mode, basename)
-	fs.overlay[dirname] = parent
-	child := NewOverlayDir(fs, name, mode, context)
-	fs.overlay[name] = child
-
-	return fuse.OK
-}
-
 func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status) {
 	delete(fs.overlay, name)
 	dirname, basename := path.Split(name)
@@ -160,10 +146,61 @@ func (fs *BufferFS) Rmdir(name string, context *fuse.Context) (code fuse.Status)
 	return fuse.OK
 }
 
-//
-//func (fs *BufferFS) Symlink(pointedTo string, linkName string, context *fuse.Context) (code fuse.Status) {
-//	return fuse.ENOSYS
-//}
+func (fs *BufferFS) Symlink(target string, name string, context *fuse.Context) (code fuse.Status) {
+	dirname, basename := path.Split(name)
+	if dirname != "" {
+		dirname = dirname[:len(dirname)-1] // remove trailing '/'
+	}
+	parent := fs.overlay[dirname]
+	if parent == nil {
+		parent = NewOverlayDir(fs, dirname, 0, context)
+		fs.overlay[dirname] = parent
+	}
+	parent.AddEntry(fuse.S_IFLNK|0777, basename)
+
+	child := NewOverlaySymlink(fs, name, target, context)
+	fs.overlay[name] = child
+
+	return fuse.OK
+}
+
+func (fs *BufferFS) Mkdir(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
+	dirname, basename := path.Split(name)
+	if dirname != "" {
+		dirname = dirname[:len(dirname)-1] // remove trailing '/'
+	}
+	parent := fs.overlay[dirname]
+	if parent == nil {
+		parent = NewOverlayDir(fs, dirname, 0, context)
+		fs.overlay[dirname] = parent
+	}
+	parent.AddEntry(fuse.S_IFDIR|mode, basename)
+
+	child := NewOverlayDir(fs, name, mode, context)
+	fs.overlay[name] = child
+
+	return fuse.OK
+}
+
+func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
+	dirname, basename := path.Split(name)
+	if dirname != "" {
+		dirname = dirname[:len(dirname)-1] // remove trailing '/'
+	}
+	parent := fs.overlay[dirname]
+	if parent == nil {
+		parent = NewOverlayDir(fs, dirname, 0, context)
+		fs.overlay[dirname] = parent
+	}
+	parent.AddEntry(fuse.S_IFREG|mode, basename)
+	fs.overlay[dirname] = parent
+
+	child := NewOverlayFile(fs, name, flags, mode, context)
+	fs.overlay[name] = child
+
+	return child, fuse.OK
+}
+
 //
 //func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context) (codee fuse.Status) {
 //	return fuse.ENOSYS
@@ -179,17 +216,3 @@ func (fs *BufferFS) Rmdir(name string, context *fuse.Context) (code fuse.Status)
 //	return fuse.OK
 //}
 //
-func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
-	dirname, basename := path.Split(name)
-	if dirname != "" {
-		dirname = dirname[:len(dirname)-1] // remove trailing '/'
-	}
-	parent := NewOverlayDir(fs, dirname, 0, context)
-	parent.AddEntry(fuse.S_IFREG|mode, basename)
-	fs.overlay[dirname] = parent
-
-	child := NewOverlayFile(fs, name, flags, mode, context)
-	fs.overlay[name] = child
-
-	return child, fuse.OK
-}

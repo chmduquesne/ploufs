@@ -394,8 +394,8 @@ func TestSymlink(t *testing.T) {
 		t.Fatalf("Symlink failed: %v", err)
 	}
 
-	origLink := filepath.Join(tc.orig, linkFile)
-	fi, err := os.Lstat(origLink)
+	mntLink := filepath.Join(tc.mnt, linkFile)
+	fi, err := os.Lstat(mntLink)
 	if err != nil {
 		t.Fatalf("Lstat failed: %v", err)
 	}
