@@ -77,7 +77,7 @@ func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.D
 func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
 	overlay := fs.overlay[name]
 	if overlay == nil {
-		overlay = NewOverlayFile(fs, name, context)
+		overlay = NewOverlayFile(fs, name, 0, 0, context)
 		fs.overlay[name] = overlay
 	}
 	return overlay, fuse.OK
@@ -145,10 +145,21 @@ func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status
 	return fuse.OK
 }
 
-//
-//func (fs *BufferFS) Rmdir(name string, context *fuse.Context) (code fuse.Status) {
-//	return fuse.ENOSYS
-//}
+func (fs *BufferFS) Rmdir(name string, context *fuse.Context) (code fuse.Status) {
+	delete(fs.overlay, name)
+	dirname, basename := path.Split(name)
+	if dirname != "" {
+		dirname = dirname[:len(dirname)-1] // remove trailing '/'
+	}
+	parent := fs.overlay[dirname]
+	if parent == nil {
+		parent = NewOverlayDir(fs, dirname, 0, context)
+		fs.overlay[dirname] = parent
+	}
+	parent.RemoveEntry(basename)
+	return fuse.OK
+}
+
 //
 //func (fs *BufferFS) Symlink(pointedTo string, linkName string, context *fuse.Context) (code fuse.Status) {
 //	return fuse.ENOSYS
@@ -168,15 +179,17 @@ func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status
 //	return fuse.OK
 //}
 //
-//func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
-//	res := fs.overlay[name]
-//	if res == nil {
-//		wrappedfile, status := fs.wrappedFS.Create(name, flags, mode, context)
-//		if status != fuse.OK {
-//			return nil, status
-//		}
-//		res = NewBufferFile(wrappedfile)
-//		fs.overlay[name] = res
-//	}
-//	return res, fuse.OK
-//}
+func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
+	dirname, basename := path.Split(name)
+	if dirname != "" {
+		dirname = dirname[:len(dirname)-1] // remove trailing '/'
+	}
+	parent := NewOverlayDir(fs, dirname, 0, context)
+	parent.AddEntry(fuse.S_IFREG|mode, basename)
+	fs.overlay[dirname] = parent
+
+	child := NewOverlayFile(fs, name, flags, mode, context)
+	fs.overlay[name] = child
+
+	return child, fuse.OK
+}

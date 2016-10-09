@@ -27,16 +27,16 @@ type OverlayFile struct {
 	lock    sync.Mutex
 }
 
-func NewOverlayFile(fs *BufferFS, source string, context *fuse.Context) *OverlayFile {
+func NewOverlayFile(fs *BufferFS, source string, flags uint32, mode uint32, context *fuse.Context) *OverlayFile {
 	log.Printf("Creating overlay file for %s\n", source)
 	_, status := fs.wrappedFS.GetAttr(source, context)
 	if status != fuse.OK {
 		source = NoSource
-		log.Printf("Underlying file system reports no source", source)
+		log.Printf("Underlying file system reports no source")
 	}
 	b := &OverlayFile{
 		File:    nodefs.NewDefaultFile(),
-		attr:    NewOverlayAttr(fs, source, fuse.S_IFREG, context),
+		attr:    NewOverlayAttr(fs, source, fuse.S_IFREG|mode, context),
 		fs:      fs,
 		source:  source,
 		context: context,
