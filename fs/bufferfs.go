@@ -201,10 +201,55 @@ func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse
 	return child, fuse.OK
 }
 
-//
-//func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context) (codee fuse.Status) {
-//	return fuse.ENOSYS
-//}
+func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context) (code fuse.Status) {
+	attr, status := fs.GetAttr(oldPath, context)
+	if status != fuse.OK {
+		return status
+	}
+	overlay := fs.overlay[oldPath]
+	if overlay == nil {
+		if attr.IsDir() {
+			overlay = NewOverlayDir(fs, oldPath, attr.Mode, context)
+		}
+		if attr.IsRegular() {
+			overlay = NewOverlayFile(fs, oldPath, 0, attr.Mode, context)
+		}
+		if attr.IsSymlink() {
+			target, st := fs.Readlink(oldPath, context)
+			if st != fuse.OK {
+				return st
+			}
+			overlay = NewOverlaySymlink(fs, oldPath, target, context)
+		}
+	}
+
+	olddirname, oldbasename := path.Split(oldPath)
+	if olddirname != "" {
+		olddirname = olddirname[:len(olddirname)-1] // remove trailing '/'
+	}
+	oldparent := fs.overlay[olddirname]
+	if oldparent == nil {
+		oldparent = NewOverlayDir(fs, olddirname, 0, context)
+		fs.overlay[olddirname] = oldparent
+	}
+	oldparent.RemoveEntry(oldbasename)
+
+	newdirname, newbasename := path.Split(oldPath)
+	if newdirname != "" {
+		newdirname = newdirname[:len(newdirname)-1] // remove trailing '/'
+	}
+	newparent := fs.overlay[newdirname]
+	if newparent == nil {
+		newparent = NewOverlayDir(fs, newdirname, 0, context)
+		fs.overlay[newdirname] = newparent
+	}
+	newparent.AddEntry(attr.Mode, newbasename)
+
+	delete(fs.overlay, oldPath)
+	fs.overlay[newPath] = overlay
+	return fuse.OK
+}
+
 //
 //func (fs *BufferFS) Link(orig string, newName string, context *fuse.Context) (code fuse.Status) {
 //	// We don't support hard links for now

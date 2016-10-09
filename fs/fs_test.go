@@ -428,9 +428,9 @@ func TestRename(t *testing.T) {
 	if err := os.Rename(tc.mountFile, subFile); err != nil {
 		t.Fatalf("Rename failed: %v", err)
 	}
-	f, _ := os.Lstat(tc.origFile)
+	f, _ := os.Lstat(tc.mountFile)
 	if f != nil {
-		t.Errorf("original %v still exists.", tc.origFile)
+		t.Errorf("mount file %v still exists.", tc.mountFile)
 	}
 	if _, err := os.Lstat(subFile); err != nil {
 		t.Errorf("destination %q does not exist: %v", subFile, err)
