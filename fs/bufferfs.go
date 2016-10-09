@@ -36,23 +36,40 @@ func (fs *BufferFS) OnMount(nodeFs *pathfs.PathNodeFs) {}
 func (fs *BufferFS) OnUnmount() {}
 
 func (fs *BufferFS) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status) {
+	// First we check if the file appears in the listing of its parent
+	// directory
+	dirname, basename := path.Split(name)
+	entries, status := fs.OpenDir(dirname, context)
+	if status != fuse.OK {
+		return a, status
+	} else {
+		found := false
+		for _, e := range entries {
+			if e.Name == basename {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return a, fuse.ENOENT
+		}
+	}
+	// At this point we know the file is listed in its parent
+	// We check if we have overriden its properties somehow
 	overlay := fs.overlay[name]
 	if overlay != nil {
 		a := fuse.Attr{}
 		code := overlay.GetAttr(&a)
 		return &a, code
 	}
+	// We did not find the file, we resort to the underlying file system
 	return fs.wrappedFS.GetAttr(name, context)
 }
 
 func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
 	overlay := fs.overlay[name]
 	if overlay != nil {
-		if overlay.Deleted() {
-			return nil, fuse.ENOENT
-		} else {
-			return overlay.Entries(context)
-		}
+		return overlay.Entries(context)
 	}
 	return fs.wrappedFS.OpenDir(name, context)
 }
@@ -114,8 +131,7 @@ func (fs *BufferFS) Mkdir(name string, mode uint32, context *fuse.Context) (code
 }
 
 func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status) {
-	fs.Open(name, fuse.F_OK, context)
-	fs.overlay[name].MarkDeleted()
+	delete(fs.overlay, name)
 	dirname, basename := path.Split(name)
 	if dirname != "" {
 		dirname = dirname[:len(dirname)-1] // remove trailing '/'

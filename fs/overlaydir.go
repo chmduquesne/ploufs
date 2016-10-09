@@ -83,14 +83,6 @@ func (d *OverlayDir) Chown(uid uint32, gid uint32) fuse.Status {
 	return d.attr.Chown(uid, gid)
 }
 
-func (d *OverlayDir) Deleted() bool {
-	return d.attr.Deleted()
-}
-
-func (d *OverlayDir) MarkDeleted() {
-	d.attr.MarkDeleted()
-}
-
 func (d *OverlayDir) Target() (target string, code fuse.Status) {
 	return "", fuse.ToStatus(syscall.ENOLINK)
 }

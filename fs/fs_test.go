@@ -72,7 +72,7 @@ func NewTestCase(t *testing.T) *testCase {
 
 	var pfs pathfs.FileSystem
 	pfs = pathfs.NewLoopbackFileSystem(tc.orig)
-	//pfs = NewBufferFS(pfs)
+	pfs = NewBufferFS(pfs)
 
 	tc.pathFs = pathfs.NewPathNodeFs(pfs, &pathfs.PathNodeFsOptions{
 		ClientInodes: true})

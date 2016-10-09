@@ -222,14 +222,6 @@ func (f *OverlayFile) SetSize(sz uint64) {
 	f.attr.SetSize(sz)
 }
 
-func (f *OverlayFile) Deleted() bool {
-	return f.attr.Deleted()
-}
-
-func (f *OverlayFile) MarkDeleted() {
-	f.attr.MarkDeleted()
-}
-
 func (f *OverlayFile) Entries(context *fuse.Context) (stream []fuse.DirEntry, code fuse.Status) {
 	return stream, fuse.ENOTDIR
 }

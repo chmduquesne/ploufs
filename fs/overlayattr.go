@@ -7,8 +7,7 @@ import (
 )
 
 type OverlayAttr struct {
-	attr    *fuse.Attr
-	deleted bool
+	attr *fuse.Attr
 }
 
 func NewOverlayAttr(fs *BufferFS, path string, mode uint32, context *fuse.Context) *OverlayAttr {
@@ -47,8 +46,7 @@ func NewOverlayAttr(fs *BufferFS, path string, mode uint32, context *fuse.Contex
 		attr = &a
 	}
 	b := &OverlayAttr{
-		attr:    attr,
-		deleted: false,
+		attr: attr,
 	}
 	return b
 }
@@ -61,18 +59,7 @@ func (n *OverlayAttr) SetSize(sz uint64) {
 	n.attr.Size = sz
 }
 
-func (n *OverlayAttr) Deleted() bool {
-	return n.deleted
-}
-
-func (n *OverlayAttr) MarkDeleted() {
-	n.deleted = true
-}
-
 func (n *OverlayAttr) GetAttr(out *fuse.Attr) (code fuse.Status) {
-	if n.Deleted() {
-		return fuse.ENOENT
-	}
 	out.Ino = n.attr.Ino
 	out.Size = n.attr.Size
 	out.Blocks = n.attr.Blocks

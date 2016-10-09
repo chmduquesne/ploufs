@@ -24,10 +24,6 @@ type OverlayPath interface {
 	Utimens(atime *time.Time, mtime *time.Time) fuse.Status
 	Allocate(off uint64, size uint64, mode uint32) (code fuse.Status)
 
-	// To overlay a deleted file
-	Deleted() bool
-	MarkDeleted()
-
 	// To overlay a directory
 	Entries(*fuse.Context) (stream []fuse.DirEntry, code fuse.Status)
 	AddEntry(mode uint32, name string) (code fuse.Status)
