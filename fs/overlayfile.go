@@ -47,7 +47,7 @@ func NewOverlayFile(wrappedFS pathfs.FileSystem, source string, context *fuse.Co
 }
 
 func (f *OverlayFile) String() string {
-	return fmt.Sprintf("OverlayFile{\nsource: %s	attr: %v\n	n_slices: %v\n	deleted: %v\n}", f.source, f.attr, len(f.slices), f.deleted)
+	return fmt.Sprintf("OverlayFile{\nsource: %s\n	attr: %v\n	n_slices: %v\n	deleted: %v\n}", f.source, f.attr, len(f.slices), f.deleted)
 }
 
 func (f *OverlayFile) GetAttr(out *fuse.Attr) (code fuse.Status) {
@@ -140,14 +140,10 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 			log.Fatalf("Could not open the underlying file in read mode\n")
 		}
 		r, status := file.Read(buf, off)
-		log.Printf("ReadResult: %v\n", r)
 		if status != fuse.OK {
 			log.Fatalf("Could not read the underlying file\n")
 		}
-		log.Printf("Result from Read(): %v bytes\n", r.Size())
 		b, _ := r.Bytes(buf)
-		log.Printf("Bytes: %v\n", b)
-
 		res.data = b
 		file.Release()
 	}
@@ -160,9 +156,6 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 	}
 
 	res = res.Shortened(n)
-
-	log.Printf("File: %v\n", f)
-	log.Printf("Merged slice: %v\n", res)
 
 	return res, fuse.OK
 }

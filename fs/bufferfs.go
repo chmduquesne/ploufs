@@ -75,11 +75,11 @@ func (fs *BufferFS) Chown(path string, uid uint32, gid uint32, context *fuse.Con
 	return overlay.Chown(uid, gid)
 }
 
-//
-//func (fs *BufferFS) Truncate(path string, offset uint64, context *fuse.Context) (code fuse.Status) {
-//	return fuse.OK
-//}
-//
+func (fs *BufferFS) Truncate(path string, offset uint64, context *fuse.Context) (code fuse.Status) {
+	overlay, _ := fs.Open(path, fuse.F_OK, context)
+	return overlay.Truncate(offset)
+}
+
 //func (fs *BufferFS) Readlink(name string, context *fuse.Context) (out string, code fuse.Status) {
 //	return "link", fuse.OK
 //}
