@@ -206,20 +206,34 @@ func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context
 	if status != fuse.OK {
 		return status
 	}
-	overlay := fs.overlay[oldPath]
-	if overlay == nil {
+	if attr.IsDir() {
+		entries, status := fs.OpenDir(oldPath, context)
+		if status != fuse.OK {
+			return status
+		}
+		for _, e := range entries {
+			toRename := path.Join(oldPath, e.Name)
+			dest := path.Join(newPath, e.Name)
+			status := fs.Rename(toRename, dest, context)
+			if status != fuse.OK {
+				return status
+			}
+		}
+	}
+	overlayPath := fs.overlay[oldPath]
+	if overlayPath == nil {
 		if attr.IsDir() {
-			overlay = NewOverlayDir(fs, oldPath, attr.Mode, context)
+			overlayPath = NewOverlayDir(fs, oldPath, attr.Mode, context)
 		}
 		if attr.IsRegular() {
-			overlay = NewOverlayFile(fs, oldPath, 0, attr.Mode, context)
+			overlayPath = NewOverlayFile(fs, oldPath, 0, attr.Mode, context)
 		}
 		if attr.IsSymlink() {
 			target, st := fs.Readlink(oldPath, context)
 			if st != fuse.OK {
 				return st
 			}
-			overlay = NewOverlaySymlink(fs, oldPath, target, context)
+			overlayPath = NewOverlaySymlink(fs, oldPath, target, context)
 		}
 	}
 
@@ -246,7 +260,7 @@ func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context
 	newparent.AddEntry(attr.Mode, newbasename)
 
 	delete(fs.overlay, oldPath)
-	fs.overlay[newPath] = overlay
+	fs.overlay[newPath] = overlayPath
 	return fuse.OK
 }
 
