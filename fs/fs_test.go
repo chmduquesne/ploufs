@@ -72,7 +72,7 @@ func NewTestCase(t *testing.T) *testCase {
 
 	var pfs pathfs.FileSystem
 	pfs = pathfs.NewLoopbackFileSystem(tc.orig)
-	//pfs = NewBufferFS(pfs)
+	pfs = NewBufferFS(pfs)
 
 	tc.pathFs = pathfs.NewPathNodeFs(pfs, &pathfs.PathNodeFsOptions{
 		ClientInodes: true})
@@ -512,20 +512,21 @@ func TestAccess(t *testing.T) {
 	}
 }
 
-func TestMknod(t *testing.T) {
-	tc := NewTestCase(t)
-	defer tc.Cleanup()
-
-	if errNo := syscall.Mknod(tc.mountFile, syscall.S_IFIFO|0777, 0); errNo != nil {
-		t.Errorf("Mknod %v", errNo)
-	}
-
-	if fi, err := os.Lstat(tc.origFile); err != nil {
-		t.Errorf("Lstat(%q): %v", tc.origFile, err)
-	} else if fi.Mode()&os.ModeNamedPipe == 0 {
-		t.Errorf("Expected FIFO filetype, got %x", fi.Mode())
-	}
-}
+// We don't support mknod
+//func TestMknod(t *testing.T) {
+//	tc := NewTestCase(t)
+//	defer tc.Cleanup()
+//
+//	if errNo := syscall.Mknod(tc.mountFile, syscall.S_IFIFO|0777, 0); errNo != nil {
+//		t.Errorf("Mknod %v", errNo)
+//	}
+//
+//	if fi, err := os.Lstat(tc.origFile); err != nil {
+//		t.Errorf("Lstat(%q): %v", tc.origFile, err)
+//	} else if fi.Mode()&os.ModeNamedPipe == 0 {
+//		t.Errorf("Expected FIFO filetype, got %x", fi.Mode())
+//	}
+//}
 
 func TestReaddir(t *testing.T) {
 	tc := NewTestCase(t)
@@ -670,7 +671,7 @@ func TestWriteLarge(t *testing.T) {
 	content := randomData(385 * 1023)
 	tc.WriteFile(tc.mountFile, []byte(content), 0644)
 
-	back, err := ioutil.ReadFile(tc.origFile)
+	back, err := ioutil.ReadFile(tc.mountFile)
 	if err != nil {
 		t.Fatalf("ReadFile failed: %v", err)
 	}
