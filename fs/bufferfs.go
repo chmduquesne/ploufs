@@ -3,7 +3,6 @@
 package fs
 
 import (
-	"log"
 	"path"
 
 	"github.com/hanwen/go-fuse/fuse"
@@ -46,7 +45,6 @@ func (fs *BufferFS) OnMount(nodeFs *pathfs.PathNodeFs) {}
 func (fs *BufferFS) OnUnmount() {}
 
 func (fs *BufferFS) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, code fuse.Status) {
-	//log.Printf("GetAttr(%s) while %v\n", name, fs.overlay)
 	if name != "" {
 		// If a file is not listed in its parent directory, it does not exist
 		// (except for the root directory which does not list itself)
@@ -65,7 +63,7 @@ func (fs *BufferFS) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, c
 			}
 			if !found {
 				// the parent did not list us
-				return a, fuse.ENOENT
+				return nil, fuse.ENOENT
 			}
 		}
 	}
@@ -210,6 +208,10 @@ func (fs *BufferFS) Rmdir(name string, context *fuse.Context) (code fuse.Status)
 }
 
 func (fs *BufferFS) Symlink(target string, name string, context *fuse.Context) (code fuse.Status) {
+	// map
+	child := NewOverlaySymlink(fs, name, target, context)
+	fs.overlay[name] = child
+
 	// create the entry in the parent dir
 	dirname, basename := pathSplit(name)
 	parent := fs.overlay[dirname]
@@ -218,14 +220,14 @@ func (fs *BufferFS) Symlink(target string, name string, context *fuse.Context) (
 		fs.overlay[dirname] = parent
 	}
 	parent.AddEntry(fuse.S_IFLNK|0777, basename)
-
-	// map
-	child := NewOverlaySymlink(fs, name, target, context)
-	fs.overlay[name] = child
 	return fuse.OK
 }
 
 func (fs *BufferFS) Mkdir(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
+	// map
+	child := NewOverlayDir(fs, name, mode, context)
+	fs.overlay[name] = child
+
 	// create the entry in the parent dir
 	dirname, basename := pathSplit(name)
 	parent := fs.overlay[dirname]
@@ -234,14 +236,14 @@ func (fs *BufferFS) Mkdir(name string, mode uint32, context *fuse.Context) (code
 		fs.overlay[dirname] = parent
 	}
 	parent.AddEntry(fuse.S_IFDIR|mode, basename)
-
-	// map
-	child := NewOverlayDir(fs, name, mode, context)
-	fs.overlay[name] = child
 	return fuse.OK
 }
 
 func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
+	// map
+	child := NewOverlayFile(fs, name, flags, mode, context)
+	fs.overlay[name] = child
+
 	// create the entry in the parent dir
 	dirname, basename := pathSplit(name)
 	parent := fs.overlay[dirname]
@@ -250,63 +252,53 @@ func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse
 		fs.overlay[dirname] = parent
 	}
 	parent.AddEntry(fuse.S_IFREG|mode, basename)
-
-	// map
-	child := NewOverlayFile(fs, name, flags, mode, context)
-	fs.overlay[name] = child
 	return child, fuse.OK
 }
 
-func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context) (code fuse.Status) {
-	log.Printf("Renaming %s to %s\n", oldPath, newPath)
-	// Check that the file exists
-	attr, code := fs.GetAttr(oldPath, context)
-	if code != fuse.OK {
-		return code
-	}
-
-	// Get an OverlayPath for the file to rename
-	overlayPath := fs.overlay[oldPath]
-	if overlayPath == nil {
+func (fs *BufferFS) GetOverlay(name string, context *fuse.Context) (res OverlayPath, code fuse.Status) {
+	res = fs.overlay[name]
+	if res == nil {
+		attr, code := fs.GetAttr(name, context)
+		if code != fuse.OK {
+			return nil, code
+		}
 		if attr.IsDir() {
-			overlayPath = NewOverlayDir(fs, oldPath, attr.Mode, context)
+			res = NewOverlayDir(fs, name, attr.Mode, context)
 		}
 		if attr.IsRegular() {
-			overlayPath = NewOverlayFile(fs, oldPath, 0, attr.Mode, context)
+			res = NewOverlayFile(fs, name, 0, attr.Mode, context)
 		}
 		if attr.IsSymlink() {
-			target, st := fs.Readlink(oldPath, context)
+			target, st := fs.Readlink(name, context)
 			if st != fuse.OK {
-				return st
+				return nil, st
 			}
-			overlayPath = NewOverlaySymlink(fs, oldPath, target, context)
+			res = NewOverlaySymlink(fs, name, target, context)
 		}
 	}
+	return res, fuse.OK
+}
 
-	// Get an OverlayDir for the parent of the old path
+func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context) (code fuse.Status) {
+	// TODO: Fuse checks existence of oldPath and the dir of the new path
+	// for us. It does not check access.
+	overlayPath, _ := fs.GetOverlay(oldPath, context)
+
 	oldDir, oldBase := pathSplit(oldPath)
-	oldParent := fs.overlay[oldDir]
-	if oldParent == nil {
-		oldParent = NewOverlayDir(fs, oldDir, 0, context)
-		fs.overlay[oldDir] = oldParent
-	}
+	oldParent, _ := fs.GetOverlay(oldDir, context)
 
-	// Get an OverlayDir for the parent of the new path
 	newDir, newBase := pathSplit(newPath)
-	newParent := fs.overlay[newDir]
-	if newParent == nil {
-		newParent = NewOverlayDir(fs, newDir, 0, context)
-		fs.overlay[newDir] = newParent
-	}
+	newParent, _ := fs.GetOverlay(newDir, context)
 
-	// Map the OverlayPath to its new path
+	// Map the new path
 	fs.overlay[newPath] = overlayPath
 	// Install the new entry in its parent
+	attr := fuse.Attr{}
+	overlayPath.GetAttr(&attr)
 	newParent.AddEntry(attr.Mode, newBase)
 	// If are moving a dir, we need to also remap the children before
 	// unmapping the parent
 	if attr.IsDir() {
-		log.Printf("%s is a directory, renaming its children\n", oldPath)
 		entries, status := fs.OpenDir(oldPath, context)
 		if status != fuse.OK {
 			return status
@@ -321,8 +313,10 @@ func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context
 		}
 	}
 
-	// Unlist the old entry in the parent (unclear if recurse)
-	oldParent.RemoveEntry(oldBase)
+	if oldParent != newParent || oldBase != newBase {
+		oldParent.RemoveEntry(oldBase)
+	}
+
 	// Unmap the OverlayPath from its old path
 	delete(fs.overlay, oldPath)
 	return fuse.OK

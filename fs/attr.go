@@ -1,7 +1,6 @@
 package fs
 
 import (
-	"log"
 	"time"
 
 	"github.com/hanwen/go-fuse/fuse"
@@ -18,7 +17,6 @@ type Attr interface {
 
 type DefaultAttr struct {
 	attr *fuse.Attr
-	path string
 }
 
 func NewAttr(fs *BufferFS, path string, mode uint32, context *fuse.Context) Attr {
@@ -56,7 +54,6 @@ func NewAttr(fs *BufferFS, path string, mode uint32, context *fuse.Context) Attr
 	}
 	b := &DefaultAttr{
 		attr: attr,
-		path: path,
 	}
 	return b
 }
@@ -70,7 +67,6 @@ func (a *DefaultAttr) SetSize(sz uint64) {
 }
 
 func (a *DefaultAttr) GetAttr(out *fuse.Attr) (code fuse.Status) {
-	log.Printf("'%s'.GetAttr()", a.path)
 	out.Ino = a.attr.Ino
 	out.Size = a.attr.Size
 	out.Blocks = a.attr.Blocks
