@@ -26,6 +26,16 @@ func (t *T) Mkdir(dirname string, mode os.FileMode) {
 	}
 }
 
+func (t *T) WriteFile(name string, content []byte, mode os.FileMode) {
+	if err := ioutil.WriteFile(name, content, mode); err != nil {
+		if len(content) > 50 {
+			content = append(content[:50], '.', '.', '.')
+		}
+
+		t.Fatalf("WriteFile(%q, %q, %o): %v", name, content, mode, err)
+	}
+}
+
 type FSImplem interface {
 	Root() string
 	Setup(dirname string)
@@ -101,9 +111,9 @@ func (implem *BufferFSImplem) Setup(dirname string) {
 	var err error
 
 	ori := dirname + "/ori"
-	os.Mkdir(ori, 0700)
+	implem.t.Mkdir(ori, 0700)
 	mnt := dirname + "/mnt"
-	os.Mkdir(mnt, 0700)
+	implem.t.Mkdir(mnt, 0700)
 	implem.root = mnt
 
 	bfs := NewBufferFS(pathfs.NewLoopbackFileSystem(ori))
