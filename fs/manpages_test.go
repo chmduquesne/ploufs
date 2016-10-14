@@ -343,18 +343,37 @@ func TestChownChangeGidFile(t *testing.T) {
 		name = name + "/file"
 		t.WriteFile(name, []byte("some data"), os.ModeAppend)
 
-		uid := os.Getuid()
-		group, err := user.LookupGroup("users")
+		// Get the user running the test
+		u, err := user.Current()
 		if err != nil {
-			t.Skip("Group 'users' not found\n")
+			t.Skip("Could not get user\n")
 		}
-		gid, _ := strconv.Atoi(group.Gid)
-
-		err = os.Chown(name, uid, gid)
+		// Get all the groups the user belong to
+		groupids, err := u.GroupIds()
 		if err != nil {
-			t.Fatalf(
-				"[%v] Chown(%s): expected no error, got %v\n",
-				fs, name, err)
+			t.Skip("Could not get groups of the user\n")
+		}
+		// Find a group that is not the current gid
+		currGid := os.Getgid()
+		otherGid := 0
+		for _, g := range groupids {
+			gid, _ := strconv.Atoi(g)
+			if gid != currGid {
+				otherGid = gid
+				group, _ := user.LookupGroupId(g)
+				t.Logf("[%v] Chown(%s): found a different group %s\n",
+					fs, name, group.Name)
+				break
+			}
+		}
+
+		if otherGid != 0 {
+			err = os.Chown(name, os.Getuid(), otherGid)
+			if err != nil {
+				t.Fatalf(
+					"[%v] Chown(%s): expected no error, got %v\n",
+					fs, name, err)
+			}
 		}
 	}
 	TestAllImplem(t, f)

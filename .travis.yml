@@ -10,8 +10,6 @@ before_install:
   - sudo chmod 666 /dev/fuse
   - sudo chown root:$USER /etc/fuse.conf
   - go get github.com/mattn/goveralls
-    # for testing chown, we need the travis user to be in 'users'
-  - sudo usermod -a -G users $USER
 script:
   - go get -t -v ./...
     # for testing chown, we need the effective travis user to be in 'users'
