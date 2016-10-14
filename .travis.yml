@@ -15,5 +15,6 @@ before_install:
 script:
   - go get -t -v ./...
     # for testing chown, we need the effective travis user to be in 'users'
-  - sudo -E su $USER -c "go test -v ./..."
-  - sudo -E su $USER -c "$HOME/gopath/bin/goveralls -service=travis-ci"
+  - groups
+  - go test -v ./...
+  - $HOME/gopath/bin/goveralls -service=travis-ci

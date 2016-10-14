@@ -7,6 +7,8 @@ package fs
 import (
 	"io/ioutil"
 	"os"
+	"os/user"
+	"strconv"
 	"syscall"
 	"testing"
 )
@@ -311,6 +313,52 @@ func TestReaddirEACCES(t *testing.T) {
 //-------
 // Chown
 //-------
+
+func TestChownNoChange(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+
+		name := fs.Root()
+		// Create a file
+		name = name + "/file"
+		t.WriteFile(name, []byte("some data"), os.ModeAppend)
+
+		uid := os.Getuid()
+		gid := os.Getgid()
+
+		err := os.Chown(name, uid, gid)
+		if err != nil {
+			t.Fatalf(
+				"[%v] Chown(%s): expected no error when not changing anything\n",
+				fs, name)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestChownChangeGidFile(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+
+		name := fs.Root()
+		// Create a file
+		name = name + "/file"
+		t.WriteFile(name, []byte("some data"), os.ModeAppend)
+
+		uid := os.Getuid()
+		group, err := user.LookupGroup("users")
+		if err != nil {
+			t.Skip("Group 'users' not found\n")
+		}
+		gid, _ := strconv.Atoi(group.Gid)
+
+		err = os.Chown(name, uid, gid)
+		if err != nil {
+			t.Fatalf(
+				"[%v] Chown(%s): expected no error, got %v\n",
+				fs, name, err)
+		}
+	}
+	TestAllImplem(t, f)
+}
 
 //----------
 // Truncate
