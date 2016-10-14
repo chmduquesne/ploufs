@@ -170,15 +170,6 @@ func (fs *BufferFS) Readlink(name string, context *fuse.Context) (out string, co
 	return fs.wrappedFS.Readlink(name, context)
 }
 
-func (fs *BufferFS) Mknod(name string, mode uint32, dev uint32, context *fuse.Context) (code fuse.Status) {
-	// No point in implementing this. It is only called for creation of
-	// non-directory, non-symlink, non-regular files (cf libfuse fuse.h
-	// L139) and we support only those. Other cases would be character
-	// special files, block special files, FIFO, and unix sockets. None of
-	// those are of interest for us.
-	return fuse.ENOSYS
-}
-
 func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status) {
 	// remove the entry in the parent dir
 	dirname, basename := pathSplit(name)
@@ -320,11 +311,6 @@ func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context
 	// Unmap the OverlayPath from its old path
 	delete(fs.overlay, oldPath)
 	return fuse.OK
-}
-
-func (fs *BufferFS) Link(orig string, newName string, context *fuse.Context) (code fuse.Status) {
-	// We don't support hard links
-	return fuse.ENOSYS
 }
 
 func (fs *BufferFS) Access(name string, mode uint32, context *fuse.Context) (code fuse.Status) {

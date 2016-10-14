@@ -123,7 +123,7 @@ func (implem *BufferFSImplem) Setup(dirname string) {
 	implem.state, err = fuse.NewServer(
 		fuse.NewRawFileSystem(implem.connector.RawFS()), mnt, &fuse.MountOptions{
 			SingleThreaded: true,
-			//Debug:          VerboseTest(),
+			Options:        []string{"default_permissions"},
 		})
 
 	if err != nil {
