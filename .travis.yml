@@ -1,4 +1,6 @@
 language: go
+go:
+  - 1.7
 sudo: required
 dist: trusty
 before_install:
@@ -8,10 +10,10 @@ before_install:
   - sudo chmod 666 /dev/fuse
   - sudo chown root:$USER /etc/fuse.conf
   - go get github.com/mattn/goveralls
-    #- sudo apt-get install -qq build-essential uuid-dev xfslibs-dev attr-dev acl-dev dmapi-dev attr
-    #- git clone https://github.com/rfjakob/fuse-xfstests /tmp/fuse-xfstests
-    #- cd /tmp/fuse-xfstests && make && cd -
+    # for testing chown, we need the travis user to be in 'users'
+  - sudo usermod -a -G users $USER
 script:
   - go get -t -v ./...
-  - go test -v ./...
-  - $HOME/gopath/bin/goveralls -service=travis-ci
+    # for testing chown, we need the effective travis user to be in 'users'
+  - sudo -E su $USER -c "go test -v ./..."
+  - sudo -E su $USER -c "$HOME/gopath/bin/goveralls -service=travis-ci"
