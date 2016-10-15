@@ -3,6 +3,7 @@
 package fs
 
 import (
+	"log"
 	"path"
 
 	"github.com/hanwen/go-fuse/fuse"
@@ -130,6 +131,8 @@ func (fs *BufferFS) Chown(name string, uid uint32, gid uint32, context *fuse.Con
 	if status != fuse.OK {
 		return status
 	}
+	log.Printf("uid: %v -> %v, gid: %v -> %v\n",
+		attr.Owner.Uid, uid, attr.Owner.Gid, gid)
 	if attr.Owner.Uid == uid && attr.Owner.Gid == gid {
 		return fuse.OK
 	}
