@@ -14,8 +14,7 @@ type FileSlice struct {
 }
 
 // So that FileSlice satisfies the fuse.ReadResult interface
-func (s *FileSlice) Done() {
-}
+func (s *FileSlice) Done() {}
 
 // So that FileSlice satisfies the fuse.ReadResult interface
 func (s *FileSlice) Bytes(buf []byte) ([]byte, fuse.Status) {
@@ -66,12 +65,12 @@ func (s *FileSlice) String() string {
 
 func (s *FileSlice) Overlaps(other *FileSlice) (res bool) {
 	res = false
-	// Beginning of the other slice inside s
-	if other.Beg() >= s.Beg() && other.Beg() <= s.End() {
+	// Beginning of the other slice strictly inside s
+	if other.Beg() >= s.Beg() && other.Beg() < s.End() {
 		res = true
 	}
-	// End of the other slice inside s
-	if other.End() >= s.Beg() && other.End() <= s.End() {
+	// End of the other slice strictly inside s
+	if other.End() >= s.Beg() && other.End() < s.End() {
 		res = true
 	}
 	// s is contained in the other slice

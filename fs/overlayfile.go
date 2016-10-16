@@ -135,6 +135,7 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 }
 
 func (f *OverlayFile) Write(data []byte, off int64) (uint32, fuse.Status) {
+	//log.Printf("writing %v bytes at offset %v", len(data), off)
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
@@ -151,7 +152,7 @@ func (f *OverlayFile) Write(data []byte, off int64) (uint32, fuse.Status) {
 	}
 
 	// Keep the slice sorted by offset and non overlapping
-	slices := make([]*FileSlice, 0)
+	slices := make([]*FileSlice, 0, len(f.slices)+1)
 	isInserted := false
 	for _, s := range f.slices {
 		if !s.Overlaps(toInsert) {
