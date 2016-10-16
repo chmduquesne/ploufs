@@ -20,10 +20,10 @@ type BufferFS struct {
 	Overlayed map[string]OverlayPath
 }
 
-func pathSplit(name string) (dirname string, basename string) {
-	dirname, basename = path.Split(name)
-	if dirname != "" {
-		dirname = dirname[:len(dirname)-1] // remove trailing '/' if present
+func pathSplit(name string) (dir string, base string) {
+	dir, base = path.Split(name)
+	if dir != "" {
+		dir = dir[:len(dir)-1] // remove trailing '/' if present
 	}
 	return
 }
@@ -49,15 +49,15 @@ func (fs *BufferFS) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, c
 	if name != "" {
 		// If a file is not listed in its parent directory, it does not exist
 		// (except for the root directory which does not list itself)
-		dirname, basename := pathSplit(name)
-		entries, status := fs.OpenDir(dirname, context)
+		dir, base := pathSplit(name)
+		entries, status := fs.OpenDir(dir, context)
 		if status != fuse.OK {
 			// We could not open the parent
 			return nil, status
 		} else {
 			found := false
 			for _, e := range entries {
-				if e.Name == basename {
+				if e.Name == base {
 					found = true
 					break
 				}
@@ -175,13 +175,13 @@ func (fs *BufferFS) Readlink(name string, context *fuse.Context) (out string, co
 
 func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status) {
 	// remove the entry in the parent dir
-	dirname, basename := pathSplit(name)
-	parent := fs.Overlayed[dirname]
+	dir, base := pathSplit(name)
+	parent := fs.Overlayed[dir]
 	if parent == nil {
-		parent = NewOverlayDir(fs, dirname, 0, context)
-		fs.Overlayed[dirname] = parent
+		parent = NewOverlayDir(fs, dir, 0, context)
+		fs.Overlayed[dir] = parent
 	}
-	parent.RemoveEntry(basename)
+	parent.RemoveEntry(base)
 	// unmap
 	delete(fs.Overlayed, name)
 	return fuse.OK
@@ -189,13 +189,13 @@ func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status
 
 func (fs *BufferFS) Rmdir(name string, context *fuse.Context) (code fuse.Status) {
 	// remove the entry in the parent dir
-	dirname, basename := pathSplit(name)
-	parent := fs.Overlayed[dirname]
+	dir, base := pathSplit(name)
+	parent := fs.Overlayed[dir]
 	if parent == nil {
-		parent = NewOverlayDir(fs, dirname, 0, context)
-		fs.Overlayed[dirname] = parent
+		parent = NewOverlayDir(fs, dir, 0, context)
+		fs.Overlayed[dir] = parent
 	}
-	parent.RemoveEntry(basename)
+	parent.RemoveEntry(base)
 	// unmap
 	delete(fs.Overlayed, name)
 	return fuse.OK
@@ -207,13 +207,13 @@ func (fs *BufferFS) Symlink(target string, name string, context *fuse.Context) (
 	fs.Overlayed[name] = child
 
 	// create the entry in the parent dir
-	dirname, basename := pathSplit(name)
-	parent := fs.Overlayed[dirname]
+	dir, base := pathSplit(name)
+	parent := fs.Overlayed[dir]
 	if parent == nil {
-		parent = NewOverlayDir(fs, dirname, 0, context)
-		fs.Overlayed[dirname] = parent
+		parent = NewOverlayDir(fs, dir, 0, context)
+		fs.Overlayed[dir] = parent
 	}
-	parent.AddEntry(fuse.S_IFLNK|0777, basename)
+	parent.AddEntry(fuse.S_IFLNK|0777, base)
 	return fuse.OK
 }
 
@@ -223,13 +223,13 @@ func (fs *BufferFS) Mkdir(name string, mode uint32, context *fuse.Context) (code
 	fs.Overlayed[name] = child
 
 	// create the entry in the parent dir
-	dirname, basename := pathSplit(name)
-	parent := fs.Overlayed[dirname]
+	dir, base := pathSplit(name)
+	parent := fs.Overlayed[dir]
 	if parent == nil {
-		parent = NewOverlayDir(fs, dirname, 0, context)
-		fs.Overlayed[dirname] = parent
+		parent = NewOverlayDir(fs, dir, 0, context)
+		fs.Overlayed[dir] = parent
 	}
-	parent.AddEntry(fuse.S_IFDIR|mode, basename)
+	parent.AddEntry(fuse.S_IFDIR|mode, base)
 	return fuse.OK
 }
 
@@ -239,13 +239,13 @@ func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse
 	fs.Overlayed[name] = child
 
 	// create the entry in the parent dir
-	dirname, basename := pathSplit(name)
-	parent := fs.Overlayed[dirname]
+	dir, base := pathSplit(name)
+	parent := fs.Overlayed[dir]
 	if parent == nil {
-		parent = NewOverlayDir(fs, dirname, 0, context)
-		fs.Overlayed[dirname] = parent
+		parent = NewOverlayDir(fs, dir, 0, context)
+		fs.Overlayed[dir] = parent
 	}
-	parent.AddEntry(fuse.S_IFREG|mode, basename)
+	parent.AddEntry(fuse.S_IFREG|mode, base)
 	return child, fuse.OK
 }
 
