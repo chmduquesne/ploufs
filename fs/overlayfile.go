@@ -112,7 +112,7 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 
 	// First, read what we want from the wrapped file
 	if f.source != NoSource {
-		file, status := f.fs.wrappedFS.Open(f.source, fuse.R_OK, f.context)
+		file, status := f.fs.Wrapped.Open(f.source, fuse.R_OK, f.context)
 		if status != fuse.OK {
 			log.Fatalf("Could not open the underlying file in read mode\n")
 		}

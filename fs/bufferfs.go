@@ -16,8 +16,8 @@ type BufferFS struct {
 	pathfs.FileSystem
 	// We also want a wrapped target, but we don't rely on its
 	// implementation by default
-	wrappedFS pathfs.FileSystem
-	overlay   map[string]OverlayPath
+	Wrapped   pathfs.FileSystem
+	Overlayed map[string]OverlayPath
 }
 
 func pathSplit(name string) (dirname string, basename string) {
@@ -31,14 +31,14 @@ func pathSplit(name string) (dirname string, basename string) {
 func NewBufferFS(wrapped pathfs.FileSystem) pathfs.FileSystem {
 	return &BufferFS{
 		FileSystem: pathfs.NewDefaultFileSystem(),
-		wrappedFS:  wrapped,
-		overlay:    make(map[string]OverlayPath),
+		Wrapped:    wrapped,
+		Overlayed:  make(map[string]OverlayPath),
 	}
 }
 
 func (fs *BufferFS) StatFs(name string) *fuse.StatfsOut {
 	// We rely entirely on the underlying FS
-	return fs.wrappedFS.StatFs(name)
+	return fs.Wrapped.StatFs(name)
 }
 
 func (fs *BufferFS) OnMount(nodeFs *pathfs.PathNodeFs) {}
@@ -69,31 +69,31 @@ func (fs *BufferFS) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, c
 		}
 	}
 	// The file exists, but we may have overlayed its attributes
-	overlayPath := fs.overlay[name]
+	overlayPath := fs.Overlayed[name]
 	if overlayPath != nil {
 		a = &fuse.Attr{}
 		code = overlayPath.GetAttr(a)
 		return
 	}
 	// The file is not overlayed, we resort to the underlying file system
-	a, code = fs.wrappedFS.GetAttr(name, context)
+	a, code = fs.Wrapped.GetAttr(name, context)
 	return
 }
 
 func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
-	overlayPath := fs.overlay[name]
+	overlayPath := fs.Overlayed[name]
 	if overlayPath != nil {
 		return overlayPath.Entries(context)
 	}
-	return fs.wrappedFS.OpenDir(name, context)
+	return fs.Wrapped.OpenDir(name, context)
 }
 
 func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
 	// Assumes that fuse has checked the permissions
-	overlayPath := fs.overlay[name]
+	overlayPath := fs.Overlayed[name]
 	if overlayPath == nil {
 		overlayPath = NewOverlayFile(fs, name, flags, 0, context)
-		fs.overlay[name] = overlayPath
+		fs.Overlayed[name] = overlayPath
 	}
 	return overlayPath, fuse.OK
 }
@@ -107,8 +107,8 @@ func (fs *BufferFS) Chmod(name string, mode uint32, context *fuse.Context) (code
 	if attr.Mode&0777 == mode {
 		return fuse.OK
 	}
-	// The mode will change, we need to overlay
-	overlayPath := fs.overlay[name]
+	// The mode will change, we need to OverlayedPaths
+	overlayPath := fs.Overlayed[name]
 	if overlayPath == nil {
 		if attr.IsDir() {
 			overlayPath = NewOverlayDir(fs, name, mode, context)
@@ -120,7 +120,7 @@ func (fs *BufferFS) Chmod(name string, mode uint32, context *fuse.Context) (code
 		if attr.IsSymlink() {
 			return fuse.OK
 		}
-		fs.overlay[name] = overlayPath
+		fs.Overlayed[name] = overlayPath
 	}
 	return overlayPath.Chmod(mode)
 }
@@ -136,8 +136,8 @@ func (fs *BufferFS) Chown(name string, uid uint32, gid uint32, context *fuse.Con
 	if attr.Owner.Uid == uid && attr.Owner.Gid == gid {
 		return fuse.OK
 	}
-	// The uid/gid will change, we need to overlay
-	overlayPath := fs.overlay[name]
+	// The uid/gid will change, we need to OverlayedPaths
+	overlayPath := fs.Overlayed[name]
 	if overlayPath == nil {
 		if attr.IsDir() {
 			overlayPath = NewOverlayDir(fs, name, 0, context)
@@ -152,7 +152,7 @@ func (fs *BufferFS) Chown(name string, uid uint32, gid uint32, context *fuse.Con
 			}
 			overlayPath = NewOverlaySymlink(fs, name, target, context)
 		}
-		fs.overlay[name] = overlayPath
+		fs.Overlayed[name] = overlayPath
 	}
 	return overlayPath.Chown(uid, gid)
 }
@@ -166,52 +166,52 @@ func (fs *BufferFS) Truncate(path string, offset uint64, context *fuse.Context) 
 }
 
 func (fs *BufferFS) Readlink(name string, context *fuse.Context) (out string, code fuse.Status) {
-	overlayPath := fs.overlay[name]
+	overlayPath := fs.Overlayed[name]
 	if overlayPath != nil {
 		return overlayPath.Target()
 	}
-	return fs.wrappedFS.Readlink(name, context)
+	return fs.Wrapped.Readlink(name, context)
 }
 
 func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status) {
 	// remove the entry in the parent dir
 	dirname, basename := pathSplit(name)
-	parent := fs.overlay[dirname]
+	parent := fs.Overlayed[dirname]
 	if parent == nil {
 		parent = NewOverlayDir(fs, dirname, 0, context)
-		fs.overlay[dirname] = parent
+		fs.Overlayed[dirname] = parent
 	}
 	parent.RemoveEntry(basename)
 	// unmap
-	delete(fs.overlay, name)
+	delete(fs.Overlayed, name)
 	return fuse.OK
 }
 
 func (fs *BufferFS) Rmdir(name string, context *fuse.Context) (code fuse.Status) {
 	// remove the entry in the parent dir
 	dirname, basename := pathSplit(name)
-	parent := fs.overlay[dirname]
+	parent := fs.Overlayed[dirname]
 	if parent == nil {
 		parent = NewOverlayDir(fs, dirname, 0, context)
-		fs.overlay[dirname] = parent
+		fs.Overlayed[dirname] = parent
 	}
 	parent.RemoveEntry(basename)
 	// unmap
-	delete(fs.overlay, name)
+	delete(fs.Overlayed, name)
 	return fuse.OK
 }
 
 func (fs *BufferFS) Symlink(target string, name string, context *fuse.Context) (code fuse.Status) {
 	// map
 	child := NewOverlaySymlink(fs, name, target, context)
-	fs.overlay[name] = child
+	fs.Overlayed[name] = child
 
 	// create the entry in the parent dir
 	dirname, basename := pathSplit(name)
-	parent := fs.overlay[dirname]
+	parent := fs.Overlayed[dirname]
 	if parent == nil {
 		parent = NewOverlayDir(fs, dirname, 0, context)
-		fs.overlay[dirname] = parent
+		fs.Overlayed[dirname] = parent
 	}
 	parent.AddEntry(fuse.S_IFLNK|0777, basename)
 	return fuse.OK
@@ -220,14 +220,14 @@ func (fs *BufferFS) Symlink(target string, name string, context *fuse.Context) (
 func (fs *BufferFS) Mkdir(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
 	// map
 	child := NewOverlayDir(fs, name, mode, context)
-	fs.overlay[name] = child
+	fs.Overlayed[name] = child
 
 	// create the entry in the parent dir
 	dirname, basename := pathSplit(name)
-	parent := fs.overlay[dirname]
+	parent := fs.Overlayed[dirname]
 	if parent == nil {
 		parent = NewOverlayDir(fs, dirname, 0, context)
-		fs.overlay[dirname] = parent
+		fs.Overlayed[dirname] = parent
 	}
 	parent.AddEntry(fuse.S_IFDIR|mode, basename)
 	return fuse.OK
@@ -236,21 +236,21 @@ func (fs *BufferFS) Mkdir(name string, mode uint32, context *fuse.Context) (code
 func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
 	// map
 	child := NewOverlayFile(fs, name, flags, mode, context)
-	fs.overlay[name] = child
+	fs.Overlayed[name] = child
 
 	// create the entry in the parent dir
 	dirname, basename := pathSplit(name)
-	parent := fs.overlay[dirname]
+	parent := fs.Overlayed[dirname]
 	if parent == nil {
 		parent = NewOverlayDir(fs, dirname, 0, context)
-		fs.overlay[dirname] = parent
+		fs.Overlayed[dirname] = parent
 	}
 	parent.AddEntry(fuse.S_IFREG|mode, basename)
 	return child, fuse.OK
 }
 
 func (fs *BufferFS) GetOverlay(name string, context *fuse.Context) (res OverlayPath, code fuse.Status) {
-	res = fs.overlay[name]
+	res = fs.Overlayed[name]
 	if res == nil {
 		attr, code := fs.GetAttr(name, context)
 		if code != fuse.OK {
@@ -285,7 +285,7 @@ func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context
 	newParent, _ := fs.GetOverlay(newDir, context)
 
 	// Map the new path
-	fs.overlay[newPath] = overlayPath
+	fs.Overlayed[newPath] = overlayPath
 	// Install the new entry in its parent
 	attr := fuse.Attr{}
 	overlayPath.GetAttr(&attr)
@@ -312,7 +312,7 @@ func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context
 	}
 
 	// Unmap the OverlayPath from its old path
-	delete(fs.overlay, oldPath)
+	delete(fs.Overlayed, oldPath)
 	return fuse.OK
 }
 
