@@ -46,13 +46,17 @@ func NewOverlayFile(fs *BufferFS, source string, flags uint32, mode uint32, cont
 	return b
 }
 
+func (f *OverlayFile) Locked() (unlock func()) {
+	f.lock.Lock()
+	return func() { f.lock.Unlock() }
+}
+
 func (f *OverlayFile) String() string {
 	return fmt.Sprintf("OverlayFile{}")
 }
 
 func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
-	f.lock.Lock()
-	defer f.lock.Unlock()
+	defer f.Locked()()
 
 	off := int64(offset)
 	slices := make([]*FileSlice, 0)
@@ -92,8 +96,7 @@ func (f *OverlayFile) SetInode(*nodefs.Inode) {}
 //}
 
 func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
+	defer f.Locked()()
 
 	n := len(buf)
 	res := &FileSlice{
@@ -129,15 +132,12 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 		}
 	}
 
-	res = res.Shortened(n)
-
-	return res, fuse.OK
+	return res.Shortened(n), fuse.OK
 }
 
 func (f *OverlayFile) Write(data []byte, off int64) (uint32, fuse.Status) {
 	//log.Printf("writing %v bytes at offset %v", len(data), off)
-	f.lock.Lock()
-	defer f.lock.Unlock()
+	defer f.Locked()()
 
 	toInsert := &FileSlice{
 		data:   data,

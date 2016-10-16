@@ -26,10 +26,10 @@ func (s *FileSlice) Size() int {
 	return len(s.data)
 }
 
-// Returns a shorter FileSlice (beware that data is not a copy)
+// Returns a shorter FileSlice (by length)
 func (s *FileSlice) Shortened(l int) *FileSlice {
-	if l > len(s.data) {
-		l = len(s.data)
+	if l > s.Size() {
+		l = s.Size()
 	}
 	return &FileSlice{
 		offset: s.offset,
@@ -37,9 +37,9 @@ func (s *FileSlice) Shortened(l int) *FileSlice {
 	}
 }
 
-// Returns a shorter FileSlice (by absolute offset)
+// Returns a shorter FileSlice (by absolute offset in the file)
 func (s *FileSlice) Truncated(off int64) *FileSlice {
-	if off <= s.Beg() {
+	if off < s.Beg() {
 		return s.Shortened(0)
 	} else {
 		return s.Shortened(int(off - s.Beg()))
@@ -97,17 +97,23 @@ func (s *FileSlice) BringIn(other *FileSlice) *FileSlice {
 		}
 		return b
 	}
+	abs := func(a int64) int64 {
+		if a >= 0 {
+			return a
+		}
+		return -a
+	}
 
 	offset := min(s.offset, other.offset)
-
 	l := max(s.End(), other.End()) - min(s.Beg(), other.Beg())
-	data := make([]byte, int(l), int(l))
+	data := make([]byte, int(l))
 
+	sliceOffset := abs(other.Beg() - s.Beg())
 	if s.Beg() < other.Beg() {
 		copy(data, s.data)
-		copy(data[other.Beg()-s.Beg():], other.data)
+		copy(data[sliceOffset:], other.data)
 	} else {
-		copy(data[s.Beg()-other.Beg():], s.data)
+		copy(data[sliceOffset:], s.data)
 		copy(data, other.data)
 	}
 
