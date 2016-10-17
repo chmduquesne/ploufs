@@ -95,7 +95,7 @@ func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (node
 		overlayPath = NewOverlayFile(fs, name, flags, 0, context)
 		fs.Overlayed[name] = overlayPath
 	}
-	return NewOverlayFileHandle(overlayPath, context), fuse.OK
+	return NewOverlayFH(overlayPath, context), fuse.OK
 }
 
 func (fs *BufferFS) Chmod(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
@@ -246,7 +246,7 @@ func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse
 		fs.Overlayed[dir] = parent
 	}
 	parent.AddEntry(fuse.S_IFREG|mode, base)
-	return NewOverlayFileHandle(child, context), fuse.OK
+	return NewOverlayFH(child, context), fuse.OK
 }
 
 func (fs *BufferFS) GetOverlay(name string, context *fuse.Context) (res OverlayPath, code fuse.Status) {

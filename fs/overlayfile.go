@@ -19,11 +19,10 @@ type OverlayFile struct {
 	Dir
 	Symlink
 	Attr
-	fs      *BufferFS
-	source  string
-	slices  []*FileSlice
-	context *fuse.Context
-	lock    sync.Mutex
+	fs     *BufferFS
+	source string
+	slices []*FileSlice
+	lock   sync.Mutex
 }
 
 func NewOverlayFile(fs *BufferFS, source string, flags uint32, mode uint32, context *fuse.Context) OverlayPath {
@@ -40,7 +39,6 @@ func NewOverlayFile(fs *BufferFS, source string, flags uint32, mode uint32, cont
 		Attr:    NewAttr(fs, source, fuse.S_IFREG|mode, context),
 		fs:      fs,
 		source:  source,
-		context: context,
 	}
 	return b
 }

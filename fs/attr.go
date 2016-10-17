@@ -23,39 +23,49 @@ func NewAttr(fs *BufferFS, path string, mode uint32, context *fuse.Context) Attr
 	// If the file exists, gets its existing attr from GetAttr()
 	attr, status := fs.GetAttr(path, context)
 	if status != fuse.OK {
-		fuseOwner := fuse.Owner{
-			Uid: context.Uid,
-			Gid: context.Gid,
-		}
-		a := fuse.Attr{
-			Ino:       0,
-			Size:      0,
-			Blocks:    0,
-			Atime:     0,
-			Mtime:     0,
-			Ctime:     0,
-			Atimensec: 0,
-			Mtimensec: 0,
-			Ctimensec: 0,
-			Mode:      mode,
-			Nlink:     1,
-			Owner:     fuseOwner,
-			Rdev:      0,
-			Blksize:   0,
-			Padding:   0,
-		}
-		now := time.Now()
-		a.SetTimes(&now, &now, &now)
-		if a.IsDir() {
-			a.Size = 4096
-			a.Blocks = 8
-		}
-		attr = &a
+		return NewAttrFromScratch(mode, context.Uid, context.Gid)
+	} else {
+		return NewAttrFromExisting(attr)
 	}
-	b := &DefaultAttr{
+}
+
+func NewAttrFromExisting(attr *fuse.Attr) Attr {
+	return &DefaultAttr{
 		attr: attr,
 	}
-	return b
+}
+
+func NewAttrFromScratch(mode, uid, gid uint32) Attr {
+	fuseOwner := fuse.Owner{
+		Uid: uid,
+		Gid: gid,
+	}
+	attr := fuse.Attr{
+		Ino:       0,
+		Size:      0,
+		Blocks:    0,
+		Atime:     0,
+		Mtime:     0,
+		Ctime:     0,
+		Atimensec: 0,
+		Mtimensec: 0,
+		Ctimensec: 0,
+		Mode:      mode,
+		Nlink:     1,
+		Owner:     fuseOwner,
+		Rdev:      0,
+		Blksize:   0,
+		Padding:   0,
+	}
+	now := time.Now()
+	attr.SetTimes(&now, &now, &now)
+	if attr.IsDir() {
+		attr.Size = 4096
+		attr.Blocks = 8
+	}
+	return &DefaultAttr{
+		attr: &attr,
+	}
 }
 
 func (a *DefaultAttr) Size() uint64 {
