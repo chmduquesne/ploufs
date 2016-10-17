@@ -4,6 +4,7 @@ package fs
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/hanwen/go-fuse/fuse"
 )
@@ -27,13 +28,13 @@ func (s *FileSlice) Size() int {
 }
 
 // Returns a shorter FileSlice (by length)
-func (s *FileSlice) Shortened(l int) *FileSlice {
-	if l > s.Size() {
-		l = s.Size()
+func (s *FileSlice) Shortened(n int) *FileSlice {
+	if n > s.Size() {
+		n = s.Size()
 	}
 	return &FileSlice{
 		offset: s.offset,
-		data:   s.data[:l],
+		data:   s.data[:n],
 	}
 }
 
@@ -70,19 +71,19 @@ func (s *FileSlice) Overlaps(other *FileSlice) (res bool) {
 		res = true
 	}
 	// End of the other slice strictly inside s
-	if other.End() >= s.Beg() && other.End() < s.End() {
+	if other.End() > s.Beg() && other.End() <= s.End() {
 		res = true
 	}
 	// s is contained in the other slice
 	if other.Beg() <= s.Beg() && other.End() >= s.End() {
 		res = true
 	}
-	//log.Printf("[%v, %v] overlaps [%v, %v]? -> %v", s.Beg(), s.End(), other.Beg(), other.End(), res)
+	log.Printf("[%v, %v[ overlaps [%v, %v[? -> %v", s.Beg(), s.End(), other.Beg(), other.End(), res)
 	return
 
 }
 
-func (s *FileSlice) BringIn(other *FileSlice) *FileSlice {
+func (s *FileSlice) MergedIn(other *FileSlice) *FileSlice {
 	// We assume the slices overlap
 
 	min := func(a, b int64) int64 {
@@ -121,4 +122,17 @@ func (s *FileSlice) BringIn(other *FileSlice) *FileSlice {
 		data:   data,
 		offset: offset,
 	}
+}
+
+func (s *FileSlice) Write(other *FileSlice) {
+	// We assume the slices overlap
+	max := func(a, b int64) int64 {
+		if a > b {
+			return a
+		}
+		return b
+	}
+
+	off := max(0, other.Beg()-s.Beg())
+	copy(s.data[off:], other.data)
 }

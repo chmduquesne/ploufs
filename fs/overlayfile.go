@@ -59,54 +59,54 @@ func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 	defer f.Locked()()
 
 	off := int64(offset)
-	slices := make([]*FileSlice, 0)
+	slices := make([]*FileSlice, 0, len(f.slices)+1)
 	// Remove all the slices after the truncation
 	for _, s := range f.slices {
 		// the slice is entirely before the truncation
-		if s.Beg() <= off && s.End() <= off {
+		if s.End() <= off {
 			slices = append(slices, s)
 		}
-		// this slice is truncated
-		if s.Beg() <= off && s.End() > off {
+		// this slice is truncated but not empty (no point in having an
+		// empty slice)
+		if s.Beg() < off && s.End() > off {
 			// cut the slice
 			slices = append(slices, s.Truncated(off))
 		}
 	}
-	f.slices = slices
 
-	if offset <= f.Size() {
-		// The cut shortens the file
-		// We don't need to create an extra slice because we will always
-		// be able to read whatever already exists
-		f.SetSize(offset)
-	} else {
-		// man 2 truncate says we need to extend the file with 0 which is
-		// equivalent to a call to write from the end of the file to the
-		// specified new end.
-		buf := make([]byte, offset-f.Size())
-		f.Write(buf, int64(f.Size()))
+	if offset > f.Size() {
+		// The cut strictly extends the slice. man 2 truncate says we
+		// need to extend the file with 0. We add a slice from the end of
+		// the file.
+		s := &FileSlice{
+			offset: int64(f.Size()),
+			data:   make([]byte, offset-f.Size()),
+		}
+		slices = append(slices, s)
 	}
+
+	f.slices = slices
+	f.SetSize(offset)
 	return fuse.OK
 }
-
-func (f *OverlayFile) SetInode(*nodefs.Inode) {}
-
-//func (f *OverlayFile) InnerFile() nodefs.File {
-//	return f.File
-//}
 
 func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status) {
 	defer f.Locked()()
 
-	n := len(buf)
 	res := &FileSlice{
 		offset: off,
-		data:   buf[:0],
+		data:   buf,
 	}
+
+	log.Printf("reading %v bytes from offset %v", len(buf), off)
 
 	// man 2 read: If the file offset is at or past the end of file, no
 	// bytes are read, and read() returns zero (== fuse.OK for us)
 	if uint64(off) >= f.Size() {
+		res := &FileSlice{
+			offset: off,
+			data:   buf[:0],
+		}
 		return res, fuse.OK
 	}
 
@@ -128,26 +128,32 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 	// Merge all overlapping existing data into the result
 	for _, s := range f.slices {
 		if res.Overlaps(s) {
-			res = res.BringIn(s)
+			res.Write(s)
 		}
 	}
 
-	return res.Shortened(n), fuse.OK
+	return res.Truncated(int64(f.Size())), fuse.OK
 }
 
 func (f *OverlayFile) Write(data []byte, off int64) (uint32, fuse.Status) {
-	//log.Printf("writing %v bytes at offset %v", len(data), off)
+	log.Printf("writing %v bytes at offset %v", len(data), off)
 	defer f.Locked()()
 
+	d := make([]byte, len(data))
+	copy(d, data)
 	toInsert := &FileSlice{
-		data:   data,
+		data:   d,
 		offset: off,
 	}
 
+	// Possible optimization: Because most writes are append-only (write
+	// to the end of the file), we should look for overlapping slices from
+	// the end of the file in order to interrupt the lookup faster
+
 	// Merge all overlapping slices together
 	for _, s := range f.slices {
-		if s.Overlaps(toInsert) {
-			toInsert = s.BringIn(toInsert)
+		if toInsert.Overlaps(s) {
+			toInsert = s.MergedIn(toInsert)
 		}
 	}
 
@@ -155,7 +161,7 @@ func (f *OverlayFile) Write(data []byte, off int64) (uint32, fuse.Status) {
 	slices := make([]*FileSlice, 0, len(f.slices)+1)
 	isInserted := false
 	for _, s := range f.slices {
-		if !s.Overlaps(toInsert) {
+		if !toInsert.Overlaps(s) {
 			// insert every non-overlapping slice
 			if s.Beg() > toInsert.Beg() && !isInserted {
 				// insert our slice before any other starting after
