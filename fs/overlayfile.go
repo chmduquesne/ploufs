@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/hanwen/go-fuse/fuse"
-	"github.com/hanwen/go-fuse/fuse/nodefs"
 )
 
 const (
@@ -35,7 +34,7 @@ func NewOverlayFile(fs *BufferFS, source string, flags uint32, mode uint32, cont
 		log.Printf("Underlying file system reports no source")
 	}
 	b := &OverlayFile{
-		File:    nodefs.NewDefaultFile(),
+		File:    NewDefaultFile(),
 		Dir:     NewDefaultDir(),
 		Symlink: NewDefaultSymlink(),
 		Attr:    NewAttr(fs, source, fuse.S_IFREG|mode, context),
@@ -90,7 +89,7 @@ func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 	return fuse.OK
 }
 
-func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status) {
+func (f *OverlayFile) Read(buf []byte, off int64, ctx *fuse.Context) (fuse.ReadResult, fuse.Status) {
 	defer f.Locked()()
 
 	res := &FileSlice{
@@ -112,7 +111,7 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 
 	// First, read what we want from the wrapped file
 	if f.source != NoSource {
-		file, status := f.fs.Wrapped.Open(f.source, fuse.R_OK, f.context)
+		file, status := f.fs.Wrapped.Open(f.source, fuse.R_OK, ctx)
 		if status != fuse.OK {
 			log.Fatalf("Could not open the underlying file in read mode\n")
 		}
@@ -135,7 +134,7 @@ func (f *OverlayFile) Read(buf []byte, off int64) (fuse.ReadResult, fuse.Status)
 	return res.Truncated(int64(f.Size())), fuse.OK
 }
 
-func (f *OverlayFile) Write(data []byte, off int64) (uint32, fuse.Status) {
+func (f *OverlayFile) Write(data []byte, off int64, ctx *fuse.Context) (uint32, fuse.Status) {
 	log.Printf("writing %v bytes at offset %v", len(data), off)
 	defer f.Locked()()
 

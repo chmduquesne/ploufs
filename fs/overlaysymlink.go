@@ -7,7 +7,6 @@ import (
 	"log"
 
 	"github.com/hanwen/go-fuse/fuse"
-	"github.com/hanwen/go-fuse/fuse/nodefs"
 )
 
 type OverlaySymlink struct {
@@ -20,7 +19,7 @@ type OverlaySymlink struct {
 func NewOverlaySymlink(fs *BufferFS, name string, target string, context *fuse.Context) OverlayPath {
 	log.Printf("Creating overlay symlink '%s' -> '%s'\n", name, target)
 	s := &OverlaySymlink{
-		File:   nodefs.NewDefaultFile(),
+		File:   NewDefaultFile(),
 		Dir:    NewDefaultDir(),
 		Attr:   NewAttr(fs, name, fuse.S_IFLNK|0777, context),
 		target: target,

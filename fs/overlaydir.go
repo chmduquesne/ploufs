@@ -9,7 +9,6 @@ import (
 	"syscall"
 
 	"github.com/hanwen/go-fuse/fuse"
-	"github.com/hanwen/go-fuse/fuse/nodefs"
 )
 
 type OverlayDir struct {
@@ -27,7 +26,7 @@ func NewOverlayDir(fs *BufferFS, path string, mode uint32, context *fuse.Context
 		entries = make([]fuse.DirEntry, 0)
 	}
 	d := &OverlayDir{
-		File:    nodefs.NewDefaultFile(),
+		File:    NewDefaultFile(),
 		Symlink: NewDefaultSymlink(),
 		Attr:    NewAttr(fs, path, fuse.S_IFDIR|mode, context),
 		entries: entries,

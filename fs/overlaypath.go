@@ -12,8 +12,6 @@ type OverlayPath interface {
 	SetInode(*nodefs.Inode)
 	String() string
 	InnerFile() nodefs.File
-	Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status)
-	Write(data []byte, off int64) (written uint32, code fuse.Status)
 	Flush() fuse.Status
 	Release()
 	Fsync(flags int) (code fuse.Status)
@@ -31,4 +29,8 @@ type OverlayPath interface {
 
 	// Methods from symlink
 	Target() (target string, code fuse.Status)
+
+	// Methods from filehandle
+	Read(dest []byte, off int64, ctx *fuse.Context) (fuse.ReadResult, fuse.Status)
+	Write(data []byte, off int64, ctx *fuse.Context) (written uint32, code fuse.Status)
 }
