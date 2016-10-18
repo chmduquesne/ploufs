@@ -325,60 +325,6 @@ func TestLinkExisting(t *testing.T) {
 	CompareSlices(t, back, c)
 }
 
-// Deal correctly with hard links implied by matching client inode
-// numbers.
-func TestLinkForget(t *testing.T) {
-	tc := NewTestCase(t)
-	defer tc.Cleanup()
-
-	c := "hello"
-
-	tc.WriteFile(tc.orig+"/file1", []byte(c), 0644)
-	err := os.Link(tc.orig+"/file1", tc.orig+"/file2")
-	if err != nil {
-		t.Fatalf("Link failed: %v", err)
-	}
-
-	for _, fn := range []string{"file1", "file2"} {
-		var s syscall.Stat_t
-		err = syscall.Lstat(tc.mnt+"/"+fn, &s)
-		if err != nil {
-			t.Fatalf("Lstat failed: %v", err)
-		}
-		tc.pathFs.ForgetClientInodes()
-	}
-
-	// Now, the backing files are still hardlinked, but go-fuse's
-	// view of them should not be because of the
-	// ForgetClientInodes call. To prove this, we swap out the
-	// files in the backing store, and prove that they are
-	// distinct by truncating to different lengths.
-	for _, fn := range []string{"file1", "file2"} {
-		fn = tc.orig + "/" + fn
-		if err := os.Remove(fn); err != nil {
-			t.Fatalf("Remove", err)
-		}
-		tc.WriteFile(fn, []byte(c), 0644)
-	}
-	for i, fn := range []string{"file1", "file2"} {
-		fn = tc.mnt + "/" + fn
-		if err := os.Truncate(fn, int64(i)); err != nil {
-			t.Fatalf("Truncate", err)
-		}
-	}
-
-	for i, fn := range []string{"file1", "file2"} {
-		var s syscall.Stat_t
-		err = syscall.Lstat(tc.mnt+"/"+fn, &s)
-		if err != nil {
-			t.Fatalf("Lstat failed: %v", err)
-		}
-		if s.Size != int64(i) {
-			t.Errorf("Lstat(%q): got size %d, want %d", fn, s.Size, i)
-		}
-	}
-}
-
 func TestSymlink(t *testing.T) {
 	tc := NewTestCase(t)
 	defer tc.Cleanup()

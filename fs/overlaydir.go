@@ -4,7 +4,6 @@ package fs
 
 import (
 	"fmt"
-	"log"
 	"sync"
 	"syscall"
 
@@ -14,24 +13,18 @@ import (
 type OverlayDir struct {
 	File
 	Symlink
-	Attr
+	OverlayAttr
 	entries []fuse.DirEntry
 	lock    sync.Mutex
 }
 
-func NewOverlayDir(fs *BufferFS, path string, mode uint32, context *fuse.Context) OverlayPath {
-	log.Printf("Creating overlay dir for '%s'\n", path)
-	entries, status := fs.OpenDir(path, context)
-	if status != fuse.OK {
-		entries = make([]fuse.DirEntry, 0)
+func NewOverlayDir(attr OverlayAttr, entries []fuse.DirEntry) OverlayPath {
+	return &OverlayDir{
+		File:        NewDefaultFile(),
+		Symlink:     NewDefaultSymlink(),
+		OverlayAttr: attr,
+		entries:     entries,
 	}
-	d := &OverlayDir{
-		File:    NewDefaultFile(),
-		Symlink: NewDefaultSymlink(),
-		Attr:    NewAttr(fs, path, fuse.S_IFDIR|mode, context),
-		entries: entries,
-	}
-	return d
 }
 
 func (d *OverlayDir) AddEntry(mode uint32, name string) (code fuse.Status) {

@@ -6,7 +6,7 @@ import (
 	"github.com/hanwen/go-fuse/fuse"
 )
 
-type Attr interface {
+type OverlayAttr interface {
 	GetAttr(out *fuse.Attr) fuse.Status
 	Chown(uid uint32, gid uint32) fuse.Status
 	Chmod(perms uint32) fuse.Status
@@ -15,27 +15,27 @@ type Attr interface {
 	SetSize(sz uint64)
 }
 
-type DefaultAttr struct {
+type DefaultOverlayAttr struct {
 	attr *fuse.Attr
 }
 
-func NewAttr(fs *BufferFS, path string, mode uint32, context *fuse.Context) Attr {
+func NewOverlayAttr(fs *BufferFS, path string, mode uint32, context *fuse.Context) OverlayAttr {
 	// If the file exists, gets its existing attr from GetAttr()
 	attr, status := fs.GetAttr(path, context)
 	if status != fuse.OK {
-		return NewAttrFromScratch(mode, context.Uid, context.Gid)
+		return NewOverlayAttrFromScratch(mode, context.Uid, context.Gid)
 	} else {
-		return NewAttrFromExisting(attr)
+		return NewOverlayAttrFromExisting(attr)
 	}
 }
 
-func NewAttrFromExisting(attr *fuse.Attr) Attr {
-	return &DefaultAttr{
+func NewOverlayAttrFromExisting(attr *fuse.Attr) OverlayAttr {
+	return &DefaultOverlayAttr{
 		attr: attr,
 	}
 }
 
-func NewAttrFromScratch(mode, uid, gid uint32) Attr {
+func NewOverlayAttrFromScratch(mode, uid, gid uint32) OverlayAttr {
 	fuseOwner := fuse.Owner{
 		Uid: uid,
 		Gid: gid,
@@ -63,20 +63,20 @@ func NewAttrFromScratch(mode, uid, gid uint32) Attr {
 		attr.Size = 4096
 		attr.Blocks = 8
 	}
-	return &DefaultAttr{
+	return &DefaultOverlayAttr{
 		attr: &attr,
 	}
 }
 
-func (a *DefaultAttr) Size() uint64 {
+func (a *DefaultOverlayAttr) Size() uint64 {
 	return a.attr.Size
 }
 
-func (a *DefaultAttr) SetSize(sz uint64) {
+func (a *DefaultOverlayAttr) SetSize(sz uint64) {
 	a.attr.Size = sz
 }
 
-func (a *DefaultAttr) GetAttr(out *fuse.Attr) (code fuse.Status) {
+func (a *DefaultOverlayAttr) GetAttr(out *fuse.Attr) (code fuse.Status) {
 	out.Ino = a.attr.Ino
 	out.Size = a.attr.Size
 	out.Blocks = a.attr.Blocks
@@ -95,17 +95,18 @@ func (a *DefaultAttr) GetAttr(out *fuse.Attr) (code fuse.Status) {
 	return fuse.OK
 }
 
-func (a *DefaultAttr) Utimens(atime *time.Time, mtime *time.Time) fuse.Status {
-	a.attr.SetTimes(atime, mtime, nil)
+func (a *DefaultOverlayAttr) Utimens(atime *time.Time, mtime *time.Time) fuse.Status {
+	now := time.Now()
+	a.attr.SetTimes(atime, mtime, &now)
 	return fuse.OK
 }
 
-func (a *DefaultAttr) Chmod(mode uint32) fuse.Status {
+func (a *DefaultOverlayAttr) Chmod(mode uint32) fuse.Status {
 	a.attr.Mode = (a.attr.Mode & 0xfe00) | mode
 	return fuse.OK
 }
 
-func (a *DefaultAttr) Chown(uid uint32, gid uint32) fuse.Status {
+func (a *DefaultOverlayAttr) Chown(uid uint32, gid uint32) fuse.Status {
 	a.attr.Uid = uid
 	a.attr.Gid = gid
 	return fuse.OK

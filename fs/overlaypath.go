@@ -5,6 +5,7 @@ import (
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
+	"github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
 type OverlayPath interface {
@@ -31,6 +32,6 @@ type OverlayPath interface {
 	Target() (target string, code fuse.Status)
 
 	// Methods from filehandle
-	Read(dest []byte, off int64, ctx *fuse.Context) (fuse.ReadResult, fuse.Status)
-	Write(data []byte, off int64, ctx *fuse.Context) (written uint32, code fuse.Status)
+	Read(dest []byte, off int64, ctx *fuse.Context, fs pathfs.FileSystem) (fuse.ReadResult, fuse.Status)
+	Write(data []byte, off int64, ctx *fuse.Context, fs pathfs.FileSystem) (written uint32, code fuse.Status)
 }

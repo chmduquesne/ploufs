@@ -4,7 +4,6 @@ package fs
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/hanwen/go-fuse/fuse"
 )
@@ -78,7 +77,7 @@ func (s *FileSlice) Overlaps(other *FileSlice) (res bool) {
 	if other.Beg() <= s.Beg() && other.End() >= s.End() {
 		res = true
 	}
-	log.Printf("[%v, %v[ overlaps [%v, %v[? -> %v", s.Beg(), s.End(), other.Beg(), other.End(), res)
+	//log.Printf("[%v, %v[ overlaps [%v, %v[? -> %v", s.Beg(), s.End(), other.Beg(), other.End(), res)
 	return
 
 }

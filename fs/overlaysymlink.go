@@ -4,7 +4,6 @@ package fs
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/hanwen/go-fuse/fuse"
 )
@@ -12,19 +11,17 @@ import (
 type OverlaySymlink struct {
 	File
 	Dir
-	Attr
+	OverlayAttr
 	target string
 }
 
-func NewOverlaySymlink(fs *BufferFS, name string, target string, context *fuse.Context) OverlayPath {
-	log.Printf("Creating overlay symlink '%s' -> '%s'\n", name, target)
-	s := &OverlaySymlink{
-		File:   NewDefaultFile(),
-		Dir:    NewDefaultDir(),
-		Attr:   NewAttr(fs, name, fuse.S_IFLNK|0777, context),
-		target: target,
+func NewOverlaySymlink(attr OverlayAttr, target string) OverlayPath {
+	return &OverlaySymlink{
+		File:        NewDefaultFile(),
+		Dir:         NewDefaultDir(),
+		OverlayAttr: attr,
+		target:      target,
 	}
-	return s
 }
 
 func (s *OverlaySymlink) String() string {

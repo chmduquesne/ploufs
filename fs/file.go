@@ -3,6 +3,7 @@ package fs
 import (
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
+	"github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
 type File interface {
@@ -18,8 +19,8 @@ type File interface {
 	Allocate(off uint64, size uint64, mode uint32) (code fuse.Status)
 
 	// For usage by file handle
-	Read(dest []byte, off int64, ctx *fuse.Context) (fuse.ReadResult, fuse.Status)
-	Write(data []byte, off int64, ctx *fuse.Context) (written uint32, code fuse.Status)
+	Read(dest []byte, off int64, ctx *fuse.Context, fs pathfs.FileSystem) (fuse.ReadResult, fuse.Status)
+	Write(data []byte, off int64, ctx *fuse.Context, fs pathfs.FileSystem) (written uint32, code fuse.Status)
 }
 
 type DefaultFile struct {
@@ -32,10 +33,10 @@ func NewDefaultFile() *DefaultFile {
 	}
 }
 
-func (f *DefaultFile) Read(dest []byte, off int64, ctx *fuse.Context) (fuse.ReadResult, fuse.Status) {
+func (f *DefaultFile) Read(dest []byte, off int64, ctx *fuse.Context, fs pathfs.FileSystem) (fuse.ReadResult, fuse.Status) {
 	return nil, fuse.ENOSYS
 }
 
-func (f *DefaultFile) Write(data []byte, off int64, ctx *fuse.Context) (written uint32, code fuse.Status) {
+func (f *DefaultFile) Write(data []byte, off int64, ctx *fuse.Context, fs pathfs.FileSystem) (written uint32, code fuse.Status) {
 	return 0, fuse.ENOSYS
 }

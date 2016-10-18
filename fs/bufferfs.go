@@ -5,6 +5,8 @@ package fs
 import (
 	"log"
 	"path"
+	"sync"
+	"time"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -18,6 +20,7 @@ type BufferFS struct {
 	// implementation by default
 	Wrapped   pathfs.FileSystem
 	Overlayed map[string]OverlayPath
+	lock      sync.Mutex
 }
 
 func pathSplit(name string) (dir string, base string) {
@@ -34,6 +37,11 @@ func NewBufferFS(wrapped pathfs.FileSystem) pathfs.FileSystem {
 		Wrapped:    wrapped,
 		Overlayed:  make(map[string]OverlayPath),
 	}
+}
+
+func (fs *BufferFS) Locked() func() {
+	fs.lock.Lock()
+	return func() { fs.lock.Unlock() }
 }
 
 func (fs *BufferFS) StatFs(name string) *fuse.StatfsOut {
@@ -68,7 +76,7 @@ func (fs *BufferFS) GetAttr(name string, context *fuse.Context) (a *fuse.Attr, c
 			}
 		}
 	}
-	// The file exists, but we may have overlayed its attributes
+	// The file exists, but we may have overlayed it
 	overlayPath := fs.Overlayed[name]
 	if overlayPath != nil {
 		a = &fuse.Attr{}
@@ -88,14 +96,59 @@ func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.D
 	return fs.Wrapped.OpenDir(name, context)
 }
 
-func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
-	// Assumes that fuse has checked the permissions
+func (fs *BufferFS) OverlayFile(name string, mode uint32, context *fuse.Context) OverlayPath {
 	overlayPath := fs.Overlayed[name]
 	if overlayPath == nil {
-		overlayPath = NewOverlayFile(fs, name, flags, 0, context)
+		log.Printf("Creating OverlayFile('%v')", name)
+		attr := NewOverlayAttrFromScratch(fuse.S_IFREG|mode, context.Uid, context.Gid)
+		source := NoSource
+		a, code := fs.GetAttr(name, context)
+		if code == fuse.OK {
+			attr = NewOverlayAttrFromExisting(a)
+			source = name
+		}
+		overlayPath = NewOverlayFile(attr, source)
 		fs.Overlayed[name] = overlayPath
 	}
-	return NewOverlayFH(overlayPath, context), fuse.OK
+	return overlayPath
+}
+
+func (fs *BufferFS) OverlayDir(name string, mode uint32, context *fuse.Context) OverlayPath {
+	overlayPath := fs.Overlayed[name]
+	if overlayPath == nil {
+		log.Printf("Creating OverlayDir('%v')", name)
+		attr := NewOverlayAttrFromScratch(fuse.S_IFDIR|mode, context.Uid, context.Gid)
+		entries := make([]fuse.DirEntry, 0)
+		a, code := fs.GetAttr(name, context)
+		if code == fuse.OK {
+			attr = NewOverlayAttrFromExisting(a)
+			entries, _ = fs.OpenDir(name, context)
+		}
+		overlayPath = NewOverlayDir(attr, entries)
+		fs.Overlayed[name] = overlayPath
+	}
+	return overlayPath
+}
+
+func (fs *BufferFS) OverlaySymlink(name string, target string, context *fuse.Context) OverlayPath {
+	overlayPath := fs.Overlayed[name]
+	if overlayPath == nil {
+		log.Printf("Creating OverlaySymlink('%v')", name)
+		attr := NewOverlayAttrFromScratch(fuse.S_IFLNK|0777, context.Uid, context.Gid)
+		existingTarget, code := fs.Readlink(name, context)
+		if code == fuse.OK {
+			target = existingTarget
+		}
+		overlayPath = NewOverlaySymlink(attr, target)
+		fs.Overlayed[name] = overlayPath
+	}
+	return overlayPath
+}
+
+func (fs *BufferFS) Open(name string, flags uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
+	// Assumes that fuse has checked the permissions
+	overlayPath := fs.OverlayFile(name, 0, context)
+	return NewOverlayFH(overlayPath, context, fs.Wrapped), fuse.OK
 }
 
 func (fs *BufferFS) Chmod(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
@@ -107,20 +160,19 @@ func (fs *BufferFS) Chmod(name string, mode uint32, context *fuse.Context) (code
 	if attr.Mode&0777 == mode {
 		return fuse.OK
 	}
-	// The mode will change, we need to OverlayedPaths
+	// The mode will change, we need to overlay
 	overlayPath := fs.Overlayed[name]
 	if overlayPath == nil {
 		if attr.IsDir() {
-			overlayPath = NewOverlayDir(fs, name, mode, context)
+			overlayPath = fs.OverlayDir(name, 0, context)
 		}
 		if attr.IsRegular() {
-			overlayPath = NewOverlayFile(fs, name, 0, mode, context)
+			overlayPath = fs.OverlayFile(name, 0, context)
 		}
 		// Permissions on symlinks don't make sense (I think) -> TESTME
 		if attr.IsSymlink() {
 			return fuse.OK
 		}
-		fs.Overlayed[name] = overlayPath
 	}
 	return overlayPath.Chmod(mode)
 }
@@ -140,29 +192,24 @@ func (fs *BufferFS) Chown(name string, uid uint32, gid uint32, context *fuse.Con
 	overlayPath := fs.Overlayed[name]
 	if overlayPath == nil {
 		if attr.IsDir() {
-			overlayPath = NewOverlayDir(fs, name, 0, context)
+			overlayPath = fs.OverlayDir(name, 0, context)
 		}
 		if attr.IsRegular() {
-			overlayPath = NewOverlayFile(fs, name, 0, 0, context)
+			overlayPath = fs.OverlayFile(name, 0, context)
 		}
 		if attr.IsSymlink() {
-			target, st := fs.Readlink(name, context)
-			if st != fuse.OK {
-				return st
-			}
-			overlayPath = NewOverlaySymlink(fs, name, target, context)
+			overlayPath = fs.OverlaySymlink(name, "", context)
 		}
-		fs.Overlayed[name] = overlayPath
 	}
 	return overlayPath.Chown(uid, gid)
 }
 
 func (fs *BufferFS) Truncate(path string, offset uint64, context *fuse.Context) (code fuse.Status) {
-	overlayPath, status := fs.Open(path, fuse.W_OK, context)
+	overlayFH, status := fs.Open(path, fuse.W_OK, context)
 	if status != fuse.OK {
 		return status
 	}
-	return overlayPath.Truncate(offset)
+	return overlayFH.Truncate(offset)
 }
 
 func (fs *BufferFS) Readlink(name string, context *fuse.Context) (out string, code fuse.Status) {
@@ -176,11 +223,7 @@ func (fs *BufferFS) Readlink(name string, context *fuse.Context) (out string, co
 func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status) {
 	// remove the entry in the parent dir
 	dir, base := pathSplit(name)
-	parent := fs.Overlayed[dir]
-	if parent == nil {
-		parent = NewOverlayDir(fs, dir, 0, context)
-		fs.Overlayed[dir] = parent
-	}
+	parent := fs.OverlayDir(dir, 0, context)
 	parent.RemoveEntry(base)
 	// unmap
 	delete(fs.Overlayed, name)
@@ -190,11 +233,7 @@ func (fs *BufferFS) Unlink(name string, context *fuse.Context) (code fuse.Status
 func (fs *BufferFS) Rmdir(name string, context *fuse.Context) (code fuse.Status) {
 	// remove the entry in the parent dir
 	dir, base := pathSplit(name)
-	parent := fs.Overlayed[dir]
-	if parent == nil {
-		parent = NewOverlayDir(fs, dir, 0, context)
-		fs.Overlayed[dir] = parent
-	}
+	parent := fs.OverlayDir(dir, 0, context)
 	parent.RemoveEntry(base)
 	// unmap
 	delete(fs.Overlayed, name)
@@ -203,86 +242,59 @@ func (fs *BufferFS) Rmdir(name string, context *fuse.Context) (code fuse.Status)
 
 func (fs *BufferFS) Symlink(target string, name string, context *fuse.Context) (code fuse.Status) {
 	// map
-	child := NewOverlaySymlink(fs, name, target, context)
-	fs.Overlayed[name] = child
+	fs.OverlaySymlink(name, target, context)
 
 	// create the entry in the parent dir
 	dir, base := pathSplit(name)
-	parent := fs.Overlayed[dir]
-	if parent == nil {
-		parent = NewOverlayDir(fs, dir, 0, context)
-		fs.Overlayed[dir] = parent
-	}
+	parent := fs.OverlayDir(dir, 0, context)
 	parent.AddEntry(fuse.S_IFLNK|0777, base)
 	return fuse.OK
 }
 
 func (fs *BufferFS) Mkdir(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
 	// map
-	child := NewOverlayDir(fs, name, mode, context)
-	fs.Overlayed[name] = child
+	fs.OverlayDir(name, mode, context)
 
 	// create the entry in the parent dir
 	dir, base := pathSplit(name)
-	parent := fs.Overlayed[dir]
-	if parent == nil {
-		parent = NewOverlayDir(fs, dir, 0, context)
-		fs.Overlayed[dir] = parent
-	}
+	parent := fs.OverlayDir(dir, 0, context)
 	parent.AddEntry(fuse.S_IFDIR|mode, base)
 	return fuse.OK
 }
 
 func (fs *BufferFS) Create(name string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
 	// map
-	child := NewOverlayFile(fs, name, flags, mode, context)
-	fs.Overlayed[name] = child
+	child := fs.OverlayFile(name, mode, context)
 
 	// create the entry in the parent dir
 	dir, base := pathSplit(name)
-	parent := fs.Overlayed[dir]
-	if parent == nil {
-		parent = NewOverlayDir(fs, dir, 0, context)
-		fs.Overlayed[dir] = parent
-	}
+	parent := fs.OverlayDir(dir, 0, context)
 	parent.AddEntry(fuse.S_IFREG|mode, base)
-	return NewOverlayFH(child, context), fuse.OK
-}
-
-func (fs *BufferFS) GetOverlay(name string, context *fuse.Context) (res OverlayPath, code fuse.Status) {
-	res = fs.Overlayed[name]
-	if res == nil {
-		attr, code := fs.GetAttr(name, context)
-		if code != fuse.OK {
-			return nil, code
-		}
-		if attr.IsDir() {
-			res = NewOverlayDir(fs, name, attr.Mode, context)
-		}
-		if attr.IsRegular() {
-			res = NewOverlayFile(fs, name, 0, attr.Mode, context)
-		}
-		if attr.IsSymlink() {
-			target, st := fs.Readlink(name, context)
-			if st != fuse.OK {
-				return nil, st
-			}
-			res = NewOverlaySymlink(fs, name, target, context)
-		}
-	}
-	return res, fuse.OK
+	return NewOverlayFH(child, context, fs.Wrapped), fuse.OK
 }
 
 func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context) (code fuse.Status) {
 	// TODO: Fuse checks existence of oldPath and the dir of the new path
 	// for us. It does not check access.
-	overlayPath, _ := fs.GetOverlay(oldPath, context)
+	overlayPath := fs.Overlayed[oldPath]
+	if overlayPath == nil {
+		attr, _ := fs.GetAttr(oldPath, context)
+		if attr.IsDir() {
+			overlayPath = fs.OverlayDir(oldPath, 0, context)
+		}
+		if attr.IsRegular() {
+			overlayPath = fs.OverlayFile(oldPath, 0, context)
+		}
+		if attr.IsSymlink() {
+			overlayPath = fs.OverlaySymlink(oldPath, "", context)
+		}
+	}
 
 	oldDir, oldBase := pathSplit(oldPath)
-	oldParent, _ := fs.GetOverlay(oldDir, context)
+	oldParent := fs.OverlayDir(oldDir, 0, context)
 
 	newDir, newBase := pathSplit(newPath)
-	newParent, _ := fs.GetOverlay(newDir, context)
+	newParent := fs.OverlayDir(newDir, 0, context)
 
 	// Map the new path
 	fs.Overlayed[newPath] = overlayPath
@@ -336,4 +348,21 @@ func (fs *BufferFS) Access(name string, mode uint32, context *fuse.Context) (cod
 		return fuse.OK
 	}
 	return fuse.EACCES
+}
+
+func (fs *BufferFS) Utimens(name string, atime *time.Time, mtime *time.Time, context *fuse.Context) (code fuse.Status) {
+	overlayPath := fs.Overlayed[name]
+	if overlayPath == nil {
+		attr, _ := fs.GetAttr(name, context)
+		if attr.IsDir() {
+			overlayPath = fs.OverlayDir(name, 0, context)
+		}
+		if attr.IsRegular() {
+			overlayPath = fs.OverlayFile(name, 0, context)
+		}
+		if attr.IsSymlink() {
+			overlayPath = fs.OverlaySymlink(name, "", context)
+		}
+	}
+	return overlayPath.Utimens(atime, mtime)
 }

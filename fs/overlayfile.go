@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/hanwen/go-fuse/fuse"
+	"github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
 const (
@@ -18,29 +19,20 @@ type OverlayFile struct {
 	File
 	Dir
 	Symlink
-	Attr
-	fs     *BufferFS
+	OverlayAttr
 	source string
 	slices []*FileSlice
 	lock   sync.Mutex
 }
 
-func NewOverlayFile(fs *BufferFS, source string, flags uint32, mode uint32, context *fuse.Context) OverlayPath {
-	log.Printf("Creating overlay file for '%s'\n", source)
-	_, status := fs.GetAttr(source, context)
-	if status != fuse.OK {
-		source = NoSource
-		log.Printf("Underlying file system reports no source")
+func NewOverlayFile(attr OverlayAttr, source string) OverlayPath {
+	return &OverlayFile{
+		File:        NewDefaultFile(),
+		Dir:         NewDefaultDir(),
+		Symlink:     NewDefaultSymlink(),
+		OverlayAttr: attr,
+		source:      source,
 	}
-	b := &OverlayFile{
-		File:    NewDefaultFile(),
-		Dir:     NewDefaultDir(),
-		Symlink: NewDefaultSymlink(),
-		Attr:    NewAttr(fs, source, fuse.S_IFREG|mode, context),
-		fs:      fs,
-		source:  source,
-	}
-	return b
 }
 
 func (f *OverlayFile) Locked() (unlock func()) {
@@ -87,15 +79,13 @@ func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 	return fuse.OK
 }
 
-func (f *OverlayFile) Read(buf []byte, off int64, ctx *fuse.Context) (fuse.ReadResult, fuse.Status) {
+func (f *OverlayFile) Read(buf []byte, off int64, ctx *fuse.Context, fs pathfs.FileSystem) (fuse.ReadResult, fuse.Status) {
 	defer f.Locked()()
 
 	res := &FileSlice{
 		offset: off,
 		data:   buf,
 	}
-
-	log.Printf("reading %v bytes from offset %v", len(buf), off)
 
 	// man 2 read: If the file offset is at or past the end of file, no
 	// bytes are read, and read() returns zero (== fuse.OK for us)
@@ -109,7 +99,7 @@ func (f *OverlayFile) Read(buf []byte, off int64, ctx *fuse.Context) (fuse.ReadR
 
 	// First, read what we want from the wrapped file
 	if f.source != NoSource {
-		file, status := f.fs.Wrapped.Open(f.source, fuse.R_OK, ctx)
+		file, status := fs.Open(f.source, fuse.R_OK, ctx)
 		if status != fuse.OK {
 			log.Fatalf("Could not open the underlying file in read mode\n")
 		}
@@ -132,23 +122,26 @@ func (f *OverlayFile) Read(buf []byte, off int64, ctx *fuse.Context) (fuse.ReadR
 	return res.Truncated(int64(f.Size())), fuse.OK
 }
 
-func (f *OverlayFile) Write(data []byte, off int64, ctx *fuse.Context) (uint32, fuse.Status) {
-	log.Printf("writing %v bytes at offset %v", len(data), off)
+func (f *OverlayFile) Write(data []byte, off int64, ctx *fuse.Context, fs pathfs.FileSystem) (uint32, fuse.Status) {
 	defer f.Locked()()
 
-	d := make([]byte, len(data))
-	copy(d, data)
+	// go-fuse seems to reuse the write buffer, we need to copy the input
+	input := make([]byte, len(data))
+	copy(input, data)
 	toInsert := &FileSlice{
-		data:   d,
+		data:   input,
 		offset: off,
 	}
 
-	// Possible optimization: Because most writes are append-only (write
-	// to the end of the file), we should look for overlapping slices from
-	// the end of the file in order to interrupt the lookup faster
-
-	// Merge all overlapping slices together
-	for _, s := range f.slices {
+	// Merge all overlapping slices together, starting from the end
+	for i := len(f.slices) - 1; i >= 0; i-- {
+		s := f.slices[i]
+		// Slices are non overlapping and ordered. If we meet a slice that
+		// is strictly before us, we can be sure there is no longer a chance
+		// to meet an overlapping slice.
+		if s.End() <= toInsert.Beg() {
+			break
+		}
 		if toInsert.Overlaps(s) {
 			toInsert = s.MergedIn(toInsert)
 		}
