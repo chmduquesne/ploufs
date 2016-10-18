@@ -126,13 +126,12 @@ func (s *FileSlice) MergedIn(other *FileSlice) *FileSlice {
 
 func (s *FileSlice) Write(other *FileSlice) {
 	// We assume the slices overlap
-	max := func(a, b int64) int64 {
-		if a > b {
-			return a
-		}
-		return b
+	diff := other.Beg() - s.Beg()
+	if diff >= 0 {
+		// other starts after s
+		copy(s.data[diff:], other.data)
+	} else {
+		// s starts after other
+		copy(s.data, other.data[-diff:])
 	}
-
-	off := max(0, other.Beg()-s.Beg())
-	copy(s.data[off:], other.data)
 }
