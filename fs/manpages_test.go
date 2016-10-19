@@ -403,6 +403,33 @@ func TestTruncateExtend(t *testing.T) {
 	TestAllImplem(t, f)
 }
 
+func TestTruncateSameSize(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+
+		name := fs.Root()
+		// Create a file
+		name = name + "/file"
+		data := []byte("some data")
+		t.WriteFile(name, data, 0700)
+
+		sz := int64(len(data))
+		err := os.Truncate(name, sz)
+		if err != nil {
+			t.Fatalf(
+				"[%v] Truncate(%s): expected no error, got %v\n",
+				fs, name, err)
+		}
+
+		info, _ := os.Stat(name)
+		if info.Size() != sz {
+			t.Fatalf(
+				"[%v] After truncate(%s): expected size %v, got %v\n",
+				fs, name, sz, info.Size())
+		}
+	}
+	TestAllImplem(t, f)
+}
+
 func TestTruncateModTime(t *testing.T) {
 	f := func(fs FSImplem, t *T) {
 
