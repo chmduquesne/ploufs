@@ -26,23 +26,22 @@ func (s *FileSlice) Size() int {
 	return len(s.data)
 }
 
-// Returns a shorter FileSlice (by length)
-func (s *FileSlice) Shortened(n int) *FileSlice {
-	if n > s.Size() {
-		n = s.Size()
-	}
-	return &FileSlice{
-		offset: s.offset,
-		data:   s.data[:n],
-	}
-}
-
 // Returns a shorter FileSlice (by absolute offset in the file)
 func (s *FileSlice) Truncated(off int64) *FileSlice {
 	if off < s.Beg() {
-		return s.Shortened(0)
+		return &FileSlice{
+			offset: s.offset,
+			data:   nil,
+		}
 	} else {
-		return s.Shortened(int(off - s.Beg()))
+		n := int(off - s.Beg())
+		if n > s.Size() {
+			n = s.Size()
+		}
+		return &FileSlice{
+			offset: s.offset,
+			data:   s.data[:n],
+		}
 	}
 }
 
