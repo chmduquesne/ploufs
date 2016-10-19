@@ -9,6 +9,7 @@ import (
 	"os"
 	"syscall"
 	"testing"
+	"time"
 )
 
 //--------
@@ -223,10 +224,10 @@ func TestReaddirNotADir(t *testing.T) {
 		t.WriteFile(name, []byte("some data"), os.ModeAppend)
 
 		_, err := ioutil.ReadDir(name)
-		if err == nil {
+		if !os.IsPermission(err) {
 			t.Fatalf(
-				"[%v] ReadDir(%s): expected an error when opening a file\n",
-				fs, name)
+				"[%v] ReadDir(%s): expected an error when opening a file, got '%v'\n",
+				fs, name, err)
 		}
 	}
 	TestAllImplem(t, f)
@@ -261,10 +262,10 @@ func TestReaddirOnSymlinkToFile(t *testing.T) {
 
 		name = name + "/symlink"
 		_, err := ioutil.ReadDir(name)
-		if err == nil {
+		if !os.IsPermission(err) {
 			t.Fatalf(
-				"[%v] ReadDir(%s): expected an error with a symlink to a file\n",
-				fs, name)
+				"[%v] ReadDir(%s): expected a permission error, got '%v'\n",
+				fs, name, err)
 		}
 	}
 	TestAllImplem(t, f)
@@ -276,10 +277,10 @@ func TestReaddirENOENT(t *testing.T) {
 
 		name = name + "/nonexisting"
 		_, err := ioutil.ReadDir(name)
-		if err == nil {
+		if !os.IsNotExist(err) {
 			t.Fatalf(
-				"[%v] ReadDir(%s): expected an error with a non existing dir\n",
-				fs, name)
+				"[%v] ReadDir(%s): expected an existence error, got '%v'\n",
+				fs, name, err)
 		}
 	}
 	TestAllImplem(t, f)
@@ -291,10 +292,10 @@ func TestReaddirEACCES(t *testing.T) {
 		t.Mkdir(name, 0000)
 
 		_, err := ioutil.ReadDir(name)
-		if err == nil {
+		if !os.IsPermission(err) {
 			t.Fatalf(
-				"[%v] ReadDir(%s): expected an error with a chmod 0000 dir\n",
-				fs, name)
+				"[%v] ReadDir(%s): expected a permission error, got '%v'\n",
+				fs, name, err)
 		}
 	}
 	TestAllImplem(t, f)
@@ -337,30 +338,143 @@ func TestChownNoChange(t *testing.T) {
 // Truncate
 //----------
 
-//func TestTruncateZero(t *testing.T) {
-//	f := func(fs FSImplem, t *T) {
-//
-//		name := fs.Root()
-//		// Create a file
-//		name = name + "/file"
-//		t.WriteFile(name, []byte("some data"), os.ModeAppend)
-//
-//		info, err := os.Stat(name)
-//
-//		t.Fatalf(
-//			"%v\n",
-//			info.Mode())
-//
-//		var sz int64 = 0
-//		err = os.Truncate(name, sz)
-//		if err != nil {
-//			t.Fatalf(
-//				"[%v] Truncate(%s): expected no error, got %v\n",
-//				fs, name, err)
-//		}
-//	}
-//	TestAllImplem(t, f)
-//}
+func TestTruncateZero(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+
+		name := fs.Root()
+		// Create a file
+		name = name + "/file"
+		t.WriteFile(name, []byte("some data"), 0700)
+
+		sz := int64(0)
+		err := os.Truncate(name, sz)
+		if err != nil {
+			t.Fatalf(
+				"[%v] Truncate(%s): expected no error, got %v\n",
+				fs, name, err)
+		}
+
+		info, _ := os.Stat(name)
+		if info.Size() != sz {
+			t.Fatalf(
+				"[%v] After truncate(%s): expected size %v, got %v\n",
+				fs, name, sz, info.Size())
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestTruncateExtend(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+
+		name := fs.Root()
+		// Create a file
+		name = name + "/file"
+		data := []byte("hello world!")
+		t.WriteFile(name, data, 0700)
+
+		sz := int64(1024)
+		err := os.Truncate(name, sz)
+		if err != nil {
+			t.Fatalf(
+				"[%v] Truncate(%s): expected no error, got %v\n",
+				fs, name, err)
+		}
+
+		info, _ := os.Stat(name)
+		if info.Size() != sz {
+			t.Fatalf(
+				"[%v] After truncate(%s): expected size %v, got %v\n",
+				fs, name, sz, info.Size())
+		}
+
+		// man 2 truncate
+		// If the file previously was shorter, it is extended, and the
+		// extended part reads as null bytes ('\0')
+		expected := make([]byte, sz)
+		copy(expected, data)
+
+		content, _ := ioutil.ReadFile(name)
+		if err := t.CompareSlices(expected, content); err != nil {
+			t.Fatal("[%v] After truncate(%s): %v\n", fs, name, err)
+		}
+
+	}
+	TestAllImplem(t, f)
+}
+
+func TestTruncateModTime(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+
+		name := fs.Root()
+		// Create a file
+		name = name + "/file"
+		data := []byte("hello world!")
+		t.WriteFile(name, data, 0700)
+
+		info, _ := os.Stat(name)
+		modTime := info.ModTime()
+
+		// Sleeping a bit to leave a chance to modtime to change
+		time.Sleep(time.Second / 100)
+		os.Truncate(name, 0)
+
+		info, _ = os.Stat(name)
+		if info.ModTime().Equal(modTime) {
+			t.Fatalf(
+				"[%v] After truncate(%s): expected different modtime",
+				fs, name)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestTruncateEACCES(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+
+		name := fs.Root()
+		// Create a file
+		name = name + "/file"
+		data := []byte("hello world!")
+		t.WriteFile(name, data, os.ModeAppend)
+
+		err := os.Truncate(name, 0)
+		if !os.IsPermission(err) {
+			t.Fatalf(
+				"[%v] Truncate(%s): expected permission error, got '%v'",
+				fs, name, err)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestTruncateEISDIR(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+
+		name := fs.Root()
+		err := os.Truncate(name, 0).(*os.PathError)
+		if err.Err != syscall.EISDIR {
+			t.Fatalf(
+				"[%v] Truncate(%s): expected permission error, got '%v'",
+				fs, name, err.Err)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestTruncateENOENT(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+
+		name := fs.Root() + "/doesnotexist"
+		err := os.Truncate(name, 0)
+		if !os.IsNotExist(err) {
+			t.Fatalf(
+				"[%v] Truncate(%s): expected not exist error, got '%v'",
+				fs, name, err)
+		}
+	}
+	TestAllImplem(t, f)
+}
 
 //----------
 // Readlink
@@ -382,6 +496,24 @@ func TestChownNoChange(t *testing.T) {
 // Rename
 //--------
 
+func TestRenameFile(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		old := root + "/old"
+		t.WriteFile(old, []byte("hello world!"), 0700)
+		new := root + "/new"
+
+		if err := os.Rename(old, new); err != nil {
+			t.Fatalf(
+				"[%v] Rename('%s', '%s'): expected no error, got %v",
+				fs, old, new, err)
+		}
+
+	}
+	TestAllImplem(t, f)
+}
+
 //--------
 // Access
 //--------
@@ -389,6 +521,23 @@ func TestChownNoChange(t *testing.T) {
 //-------
 // Write
 //-------
+
+func TestWriteFile(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		file := root + "/file"
+
+		f, err := os.OpenFile(file, os.O_CREATE, 0700)
+		if err != nil {
+			t.Fatalf(
+				"[%v] Open('%s'): expected no error, got %v",
+				fs, file, err)
+		}
+		f.Close()
+	}
+	TestAllImplem(t, f)
+}
 
 //------
 // Read

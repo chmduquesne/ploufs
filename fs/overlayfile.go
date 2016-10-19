@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
@@ -47,6 +48,10 @@ func (f *OverlayFile) String() string {
 func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 	defer f.Locked()()
 
+	if offset == f.Size() {
+		return fuse.OK
+	}
+
 	off := int64(offset)
 	slices := make([]*FileSlice, 0, len(f.slices)+1)
 	// Remove all the slices after the truncation
@@ -76,6 +81,10 @@ func (f *OverlayFile) Truncate(offset uint64) fuse.Status {
 
 	f.slices = slices
 	f.SetSize(offset)
+
+	// We modified the size, so we need to update the time attributes
+	now := time.Now()
+	f.OverlayAttr.Utimens(&now, &now)
 	return fuse.OK
 }
 

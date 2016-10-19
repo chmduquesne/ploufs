@@ -1,6 +1,8 @@
 package fs
 
 import (
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"syscall"
@@ -22,7 +24,7 @@ func NewT(t *testing.T) *T {
 
 func (t *T) Mkdir(dirname string, mode os.FileMode) {
 	if err := os.Mkdir(dirname, mode); err != nil {
-		t.Fatalf("Mkdir(%q,%v): %v", dirname, mode, err)
+		t.Fatalf("Mkdir(%s,%q): %v", dirname, mode, err)
 	}
 }
 
@@ -34,6 +36,22 @@ func (t *T) WriteFile(name string, content []byte, mode os.FileMode) {
 
 		t.Fatalf("WriteFile(%q, %q, %o): %v", name, content, mode, err)
 	}
+}
+
+func (t *T) CompareSlices(exp, got []byte) error {
+	if len(got) != len(exp) {
+		s := fmt.Sprintf("content length: expected %d, got %d",
+			len(exp), len(got))
+		return errors.New(s)
+	}
+	for i := range exp {
+		if exp[i] != got[i] {
+			s := fmt.Sprintf("content mismatch byte %d: expected %d, got %d",
+				i, exp[i], got[i])
+			return errors.New(s)
+		}
+	}
+	return nil
 }
 
 type FSImplem interface {
