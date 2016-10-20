@@ -67,8 +67,6 @@ func TestAllImplem(wrapped *testing.T, test TestFunc) {
 	t := NewT(wrapped)
 	implementations := [2]FSImplem{NewNativeFSImplem(), NewBufferFSImplem(t)}
 	for _, impl := range implementations {
-		t.Logf("-- %v --\n", impl)
-
 		// Make sure system setting does not affect test.
 		syscall.Umask(0)
 
