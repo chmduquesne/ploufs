@@ -568,6 +568,138 @@ func TestRenameFile(t *testing.T) {
 	TestAllImplem(t, f)
 }
 
+func TestRenameFileCheckContent(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		data := []byte("some data")
+		old := root + "/old"
+		t.WriteFile(old, data, 0700)
+		new := root + "/new"
+
+		os.Rename(old, new)
+
+		content, err := ioutil.ReadFile(new)
+		if err != nil {
+			t.Fatalf(
+				"[%v] ReadFile('%s'): expected no error, got %v",
+				fs, new, err)
+		}
+		if err := t.CompareSlices(data, content); err != nil {
+			t.Fatalf(
+				"[%v] ReadFile('%s'): %v",
+				fs, new, err)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestRenameDirectory(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		old := root + "/old"
+		t.Mkdir(old, 0700)
+		new := root + "/new"
+
+		os.Rename(old, new)
+
+		info, err := os.Stat(new)
+		if err != nil {
+			t.Fatalf(
+				"[%v] Stat('%s'): expected no error, got %v",
+				fs, new, err)
+		}
+		if info != nil && !info.IsDir() {
+			t.Fatalf(
+				"[%v] Stat('%s'): expected a directory",
+				fs, new)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestRenameSymlink(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		old := root + "/old"
+		os.Symlink(root, old)
+		new := root + "/new"
+
+		os.Rename(old, new)
+
+		info, err := os.Lstat(new)
+		if err != nil {
+			t.Fatalf(
+				"[%v] Lstat('%s'): expected no error, got %v",
+				fs, new, err)
+		}
+		if info != nil && (info.Mode()&os.ModeSymlink != os.ModeSymlink) {
+			t.Fatalf(
+				"[%v] Lstat('%s'): expected a symlink",
+				fs, new)
+		}
+		target, err := os.Readlink(new)
+		if err != nil {
+			t.Fatalf(
+				"[%v] Readlink('%s'): expected no error, got %v",
+				fs, new, err)
+		}
+		if target != root {
+			t.Fatalf(
+				"[%v] Readlink('%s'): expected symlink target to be %v",
+				fs, new, root)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestRenameDirectoryWithChildren(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		old := root + "/old"
+		t.Mkdir(old, 0700)
+		t.Mkdir(old+"/foo", 0700)
+		t.Mkdir(old+"/foo/bar", 0700)
+		t.WriteFile(old+"/foo/bar/baz", []byte("some data"), 0700)
+		new := root + "/new"
+
+		os.Rename(old, new)
+
+		for _, name := range []string{new, new + "/foo", new + "/foo/bar", new + "/foo/bar/baz"} {
+			_, err := os.Stat(name)
+			if err != nil {
+				t.Fatalf(
+					"[%v] Stat('%s'): expected no error, got %v",
+					fs, name, err)
+			}
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestRenameDeletesOld(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		old := root + "/old"
+		t.WriteFile(old, []byte("some data"), 0700)
+		new := root + "/new"
+
+		os.Rename(old, new)
+
+		_, err := os.Stat(old)
+		if !os.IsNotExist(err) {
+			t.Fatalf(
+				"[%v] Stat('%s'): expected ENOENT, got %v",
+				fs, old, err)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
 //--------
 // Access
 //--------
