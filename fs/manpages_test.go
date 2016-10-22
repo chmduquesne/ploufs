@@ -855,3 +855,25 @@ func TestWriteFile(t *testing.T) {
 //------
 // Read
 //------
+
+//------
+// Utime
+//------
+
+func TestUtime(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		file := root + "/file"
+		t.WriteFile(file, []byte("some data"), 0700)
+
+		now := time.Now()
+		err := os.Chtimes(file, now, now)
+		if err != nil {
+			t.Fatalf(
+				"[%v] Chtimes('%s'): expected no error, got %v",
+				fs, file, err)
+		}
+	}
+	TestAllImplem(t, f)
+}
