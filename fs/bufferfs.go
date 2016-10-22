@@ -3,7 +3,6 @@
 package fs
 
 import (
-	"log"
 	"path"
 	"sync"
 	"time"
@@ -99,7 +98,7 @@ func (fs *BufferFS) OpenDir(name string, context *fuse.Context) (stream []fuse.D
 func (fs *BufferFS) OverlayFile(name string, mode uint32, context *fuse.Context) OverlayPath {
 	overlayPath := fs.Overlayed[name]
 	if overlayPath == nil {
-		log.Printf("Creating OverlayFile('%v')", name)
+		//log.Printf("Creating OverlayFile('%v')", name)
 		attr := NewOverlayAttrFromScratch(fuse.S_IFREG|mode, context.Uid, context.Gid)
 		source := NoSource
 		a, code := fs.GetAttr(name, context)
@@ -116,7 +115,7 @@ func (fs *BufferFS) OverlayFile(name string, mode uint32, context *fuse.Context)
 func (fs *BufferFS) OverlayDir(name string, mode uint32, context *fuse.Context) OverlayPath {
 	overlayPath := fs.Overlayed[name]
 	if overlayPath == nil {
-		log.Printf("Creating OverlayDir('%v')", name)
+		//log.Printf("Creating OverlayDir('%v')", name)
 		attr := NewOverlayAttrFromScratch(fuse.S_IFDIR|mode, context.Uid, context.Gid)
 		entries := make([]fuse.DirEntry, 0)
 		a, code := fs.GetAttr(name, context)
@@ -133,7 +132,7 @@ func (fs *BufferFS) OverlayDir(name string, mode uint32, context *fuse.Context) 
 func (fs *BufferFS) OverlaySymlink(name string, target string, context *fuse.Context) OverlayPath {
 	overlayPath := fs.Overlayed[name]
 	if overlayPath == nil {
-		log.Printf("Creating OverlaySymlink('%v')", name)
+		//log.Printf("Creating OverlaySymlink('%v')", name)
 		attr := NewOverlayAttrFromScratch(fuse.S_IFLNK|0777, context.Uid, context.Gid)
 		existingTarget, code := fs.Readlink(name, context)
 		if code == fuse.OK {
@@ -183,8 +182,8 @@ func (fs *BufferFS) Chown(name string, uid uint32, gid uint32, context *fuse.Con
 	if status != fuse.OK {
 		return status
 	}
-	log.Printf("uid: %v -> %v, gid: %v -> %v\n",
-		attr.Owner.Uid, uid, attr.Owner.Gid, gid)
+	//log.Printf("uid: %v -> %v, gid: %v -> %v\n",
+	//	attr.Owner.Uid, uid, attr.Owner.Gid, gid)
 	if attr.Owner.Uid == uid && attr.Owner.Gid == gid {
 		return fuse.OK
 	}

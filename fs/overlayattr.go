@@ -59,10 +59,6 @@ func NewOverlayAttrFromScratch(mode, uid, gid uint32) OverlayAttr {
 	}
 	now := time.Now()
 	attr.SetTimes(&now, &now, &now)
-	if attr.IsDir() {
-		attr.Size = 4096
-		attr.Blocks = 8
-	}
 	return &DefaultOverlayAttr{
 		attr: &attr,
 	}

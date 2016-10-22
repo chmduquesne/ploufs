@@ -86,7 +86,7 @@ func NewTestCase(t *testing.T) *testCase {
 	tc.state, err = fuse.NewServer(
 		fuse.NewRawFileSystem(tc.connector.RawFS()), tc.mnt, &fuse.MountOptions{
 			SingleThreaded: true,
-			//Debug:          VerboseTest(),
+			Debug:          VerboseTest(),
 		})
 	if err != nil {
 		t.Fatal("NewServer:", err)

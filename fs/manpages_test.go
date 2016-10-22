@@ -700,6 +700,133 @@ func TestRenameDeletesOld(t *testing.T) {
 	TestAllImplem(t, f)
 }
 
+func TestRenameFileToExistingFile(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		old := root + "/old"
+		t.WriteFile(old, []byte("some data"), 0700)
+		new := root + "/new"
+		t.WriteFile(old, []byte("data exists"), 0700)
+
+		err := os.Rename(old, new)
+
+		if err != nil {
+			t.Fatalf(
+				"[%v] Rename('%s', '%s'): expected no error, got %v",
+				fs, old, new, err)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestRenameSymlinkToExistingSymlink(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		targetOld := root + "/targetOld"
+		t.WriteFile(targetOld, []byte("data targetOld"), 0700)
+		old := root + "/old"
+		os.Symlink(targetOld, old)
+		targetNew := root + "/targetNew"
+		t.WriteFile(targetNew, []byte("data targetNew"), 0700)
+		new := root + "/new"
+		os.Symlink(targetNew, new)
+
+		err := os.Rename(old, new)
+
+		if err != nil {
+			t.Fatalf(
+				"[%v] Rename('%s', '%s'): expected no error, got %v",
+				fs, old, new, err)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestRenameFileToExistingSymlink(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		old := root + "/old"
+		t.WriteFile(old, []byte("some data"), 0700)
+		// new is a symlink pointing to /target
+		target := root + "/target"
+		t.WriteFile(target, []byte(""), 0700)
+		new := root + "/new"
+		os.Symlink(target, new)
+
+		err := os.Rename(old, new)
+
+		if err != nil {
+			t.Fatalf(
+				"[%v] Rename('%s', '%s'): expected no error, got %v",
+				fs, old, new, err)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestRenameDirToExistingDir(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		old := root + "/old"
+		t.Mkdir(old, 0700)
+		new := root + "/new"
+		os.Mkdir(new, 0700)
+
+		err := os.Rename(old, new)
+
+		if err != nil {
+			t.Fatalf(
+				"[%v] Rename('%s', '%s'): expected no error, got %v",
+				fs, old, new, err)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestRenameFileEISDIR(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		old := root + "/old"
+		t.WriteFile(old, []byte("some data"), 0700)
+		new := root + "/new"
+		os.Mkdir(new, 0700)
+
+		err := os.Rename(old, new).(*os.LinkError)
+
+		if err.Err != syscall.EISDIR {
+			t.Fatalf(
+				"[%v] Rename('%s', '%s'): expected '%v', got '%v'",
+				fs, old, new, syscall.EISDIR, err.Err)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
+func TestRenameSymlinkEISDIR(t *testing.T) {
+	f := func(fs FSImplem, t *T) {
+		root := fs.Root()
+
+		old := root + "/old"
+		os.Symlink(".", old)
+		new := root + "/new"
+		os.Mkdir(new, 0700)
+
+		err := os.Rename(old, new).(*os.LinkError)
+
+		if err.Err != syscall.EISDIR {
+			t.Fatalf(
+				"[%v] Rename('%s', '%s'): expected '%v', got '%v'",
+				fs, old, new, syscall.EISDIR, err.Err)
+		}
+	}
+	TestAllImplem(t, f)
+}
+
 //--------
 // Access
 //--------
