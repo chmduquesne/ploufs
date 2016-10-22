@@ -300,6 +300,7 @@ func (fs *BufferFS) Rename(oldPath string, newPath string, context *fuse.Context
 	// Install the new entry in its parent
 	attr := fuse.Attr{}
 	overlayPath.GetAttr(&attr)
+	newParent.RemoveEntry(newBase)
 	newParent.AddEntry(attr.Mode, newBase)
 	// If are moving a dir, we need to also remap the children before
 	// unmapping the parent
